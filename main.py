@@ -4,6 +4,7 @@ import yaml
 import json
 from tools import AVAILABLE_TOOLS
 from state_thinking import AgentFSM
+from deepsearch import DeepSearch
 
 
 
@@ -118,6 +119,7 @@ def main():
 
 
     fsm_agent = AgentFSM(client, tool_config,AVAILABLE_TOOLS)
+    deep_search_agent = DeepSearch(client)
 
     chat_history = [
         {"role":"system", "content":"你是一个无敌的助手,不完成任务不结束对话"}
@@ -128,6 +130,14 @@ def main():
         user_input = input("User:")
         if user_input == "quit":
             break
+
+        if "深度搜索" in user_input:
+            query = user_input.replace("深度搜索", "", 1).strip()
+            if not query:
+                query = user_input
+            result = deep_search_agent.run(query)
+            print(f"output:{result}")
+            continue
 
         task_type = llm_router(user_input)
 

@@ -67,7 +67,15 @@ class AgentFSM:
                 
                 try:
                     json_args = json.loads(func_args_str)#解包json字符串
-                    tool_result = func(**json_args)
+                    if func_name == "exec_cli_command":
+                        command = json_args.get("command", "")
+                        user_confirm = input(f"Agent 想执行命令: {command}\n是否同意执行？(yes/no): ").strip().lower()
+                        if user_confirm not in {"yes", "y"}:
+                            tool_result = "用户拒绝执行该命令。"
+                        else:
+                            tool_result = func(**json_args)
+                    else:
+                        tool_result = func(**json_args)
                 except json.JSONDecodeError as e:
                     tool_result = f"致命格式错误：你生成的 arguments 不是合法的 JSON 格式。报错细节：{str(e)}。请检查是否有多余的文本、未转义的引号或代码块标记，并重新严格生成纯 JSON 数据！"
                 except Exception as e:
@@ -93,6 +101,5 @@ class AgentFSM:
     
         self.state = "THINKING"
         print("继续思考")
-
 
 

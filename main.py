@@ -11,10 +11,25 @@ from deepsearch import DeepSearch
 
 
 
+def _get_api_key() -> str:
+    """
+    安全读取 API Key：
+    1) 优先读取环境变量 DASHSCOPE_API_KEY
+    2) 未配置时抛出明确错误，避免把密钥硬编码进代码仓库
+    """
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "未检测到 DASHSCOPE_API_KEY。请先在环境变量中设置，例如："
+            "export DASHSCOPE_API_KEY='your_api_key'"
+        )
+    return api_key
+
+
 client = OpenAI(
-api_key=(""),#buyao xie lou
-base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-    )
+    api_key=_get_api_key(),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+)
 
 #CALL THE LLM
 

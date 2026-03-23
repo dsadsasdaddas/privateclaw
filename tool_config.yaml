@@ -58,3 +58,17 @@
         - skill_name
         - python_code
         - yaml_config
+- type: function
+  function:
+    name: exec_cli_command
+    description: |
+      受控命令执行工具。Agent 在调用前必须先征求人类同意。
+      本工具内部会拒绝危险命令（如 rm、shutdown、mkfs 等）。
+    parameters:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 需要执行的命令字符串。
+      required:
+        - command

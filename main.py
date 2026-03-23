@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import threading
+import time
 
 from openai import OpenAI
 import yaml
@@ -10,21 +12,6 @@ from context_memory import MemoryContextManager
 
 
 def _get_api_key() -> str:
-    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError(
-            "未检测到 DASHSCOPE_API_KEY。请先在环境变量中设置，例如："
-            "export DASHSCOPE_API_KEY='your_api_key'"
-        )
-    return api_key
-
-
-def _get_api_key() -> str:
-    """
-    安全读取 API Key：
-    1) 优先读取环境变量 DASHSCOPE_API_KEY
-    2) 未配置时抛出明确错误，避免把密钥硬编码进代码仓库
-    """
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError(
@@ -114,6 +101,11 @@ def load_tool_config(file_path: str) -> list:  # 载入文件
     return core_tools + dynamic_tools
 
 
+def _start_heartbeat(stop_event: threading.Event):
+    while not stop_event.is_set():
+        print(f"[heartbeat] main online @ {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        stop_event.wait(20)
+
 
 def main():
     memory_manager.ensure_md_files()
@@ -123,32 +115,41 @@ def main():
     deep_search_agent = DeepSearch(client)
 
     chat_history = []
+    stop_event = threading.Event()
+    heartbeat_thread = threading.Thread(target=_start_heartbeat, args=(stop_event,), daemon=True)
+    heartbeat_thread.start()
 
-    while True:
-        user_input = input("User:")
-        if user_input == "quit":
-            break
+    try:
+        while True:
+            user_input = input("User:")
+            if user_input == "quit":
+                break
 
-        if "深度搜索" in user_input:
-            query = user_input.replace("深度搜索", "", 1).strip()
-            if not query:
-                query = user_input
-            result = deep_search_agent.run(query)
+            if "深度搜索" in user_input:
+                query = user_input.replace("深度搜索", "", 1).strip()
+                if not query:
+                    query = user_input
+                result = deep_search_agent.run(query)
+                print(f"output:{result}")
+                memory_manager.update_memory(user_input, result)
+                memory_manager.maybe_update_soul()
+                chat_history = memory_manager.compact_history_if_needed(chat_history)
+                continue
+
+            task_type = llm_router(user_input)
+
+            if task_type == "COMPLEX":
+                result = fsm_agent.run(user_input)
+            else:
+                result = call_model(user_input, chat_history)
+
             print(f"output:{result}")
             memory_manager.update_memory(user_input, result)
             memory_manager.maybe_update_soul()
-            continue
-
-        task_type = llm_router(user_input)
-
-        if task_type == "COMPLEX":
-            result = fsm_agent.run(user_input)
-        else:
-            result = call_model(user_input, chat_history)
-
-        print(f"output:{result}")
-        memory_manager.update_memory(user_input, result)
-        memory_manager.maybe_update_soul()
+            chat_history = memory_manager.compact_history_if_needed(chat_history)
+    finally:
+        stop_event.set()
+        heartbeat_thread.join(timeout=1)
 
 
 if __name__ == "__main__":

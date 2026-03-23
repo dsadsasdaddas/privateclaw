@@ -101,6 +101,29 @@ class MemoryContextManager:
         except Exception:
             pass
 
+    def compact_history_if_needed(self, history_list: list, max_chars: int = 12000) -> list:
+        """
+        当上下文接近上限时自动压缩历史，进入下一段对话。
+        返回压缩后的新 history_list（保留近期消息，老消息写入 memory.md）。
+        """
+        total_chars = sum(len((m.get("content") or "")) for m in history_list if isinstance(m, dict))
+        if total_chars < max_chars or len(history_list) < 12:
+            return history_list
+
+        cut = int(len(history_list) * 0.7)
+        old_chunk = history_list[:cut]
+        keep_chunk = history_list[cut:]
+
+        compact_source = []
+        for msg in old_chunk:
+            role = msg.get("role", "")
+            content = (msg.get("content") or "").replace("\n", " ")
+            compact_source.append(f"{role}: {content[:300]}")
+
+        summary = self._compress_with_llm(compact_source)
+        self.update_memory("系统自动压缩上下文", summary)
+        return keep_chunk
+
     def _compress_with_llm(self, lines: list[str]) -> str:
         joined = "\n".join(lines)
         try:

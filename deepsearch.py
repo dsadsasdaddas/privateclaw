@@ -107,8 +107,8 @@ class DeepSearch:
                 cleaned = [str(x).strip() for x in candidates if str(x).strip()]
                 if cleaned:
                     subqueries = cleaned[:5]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Failed to generate subqueries, falling back to original query. Error: {e}")
 
         return {
             "subqueries": subqueries,

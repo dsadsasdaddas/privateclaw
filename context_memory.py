@@ -98,8 +98,8 @@ class MemoryContextManager:
             updated = (response.choices[0].message.content or "").strip()
             if updated:
                 self.soul_md.write_text(updated + "\n", encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Failed to update soul file: {e}")
 
     def compact_history_if_needed(self, history_list: list, max_chars: int = 12000) -> list:
         """

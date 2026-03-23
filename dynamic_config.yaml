@@ -1,0 +1,18 @@
+
+- type: function
+  function:
+    name: set_alarm
+    description: 设置一个闹钟，在指定的时间显示一条消息。
+    parameters:
+      type: object
+      properties:
+        alarm_time_str:
+          type: string
+          description: 闹钟触发的时间，格式为 'HH:MM'。
+        message:
+          type: string
+          description: 当闹钟触发时要显示的消息。
+      required:
+        - alarm_time_str
+        - message
+

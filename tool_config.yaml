@@ -1,0 +1,60 @@
+- type: function
+  function:
+    name: get_system_time
+    description: Get the current real-time clock of the system.
+    parameters:
+      type: object
+      properties: {}
+      required: []
+- type: function
+  function:
+    name: web_search
+    description: 当你需要获取最新的新闻、实时信息或未知的知识时，调用此工具搜索互联网。
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 要在搜索引擎中输入的搜索关键词,一次搜索不到没有关系,可以拆解关键词找到答案。
+      required:
+        - query
+- type: function
+  function:
+    name: execute_python_code
+    description: A Python code interpreter. Use this to write and execute python code to solve math problems, process data, or perform logical tasks. Returns the standard output (stdout) or error traceback.
+    parameters:
+      type: object
+      properties:
+        code_string:
+          type: string
+          description: The valid Python code string to be executed.
+      required:
+        - code_string
+- type: function
+  function:
+    name: create_new_skills
+    description: 当你需要长期拥有一个新能力时，调用此工具编写并保存永久的新技能。你需要提供完整的Python实现代码和匹配的YAML配置。
+    parameters:
+      type: object
+      properties:
+        skill_name:
+          type: string
+          description: 新技能的纯英文函数名，例如 calculate_tax。
+        python_code:
+          type: string
+          description: 完整的Python函数代码。
+        yaml_config:
+          type: string
+          description: |
+            严格遵守OpenAI工具格式的YAML文本。绝对禁止使用扁平结构！name和description必须嵌套在function内部！必须完全复制并填空以下模板，绝不能遗漏外层的横杠：
+            - type: function
+              function:
+                name: function_name_here
+                description: description_here
+                parameters:
+                  type: object
+                  properties: {}
+      required:
+        - skill_name
+        - python_code
+        - yaml_config

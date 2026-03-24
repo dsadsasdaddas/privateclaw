@@ -34,8 +34,10 @@ def load_personalization() -> dict:
             defaults["deepsearch_trigger_keyword"] = raw.get(
                 "deepsearch_trigger_keyword", defaults["deepsearch_trigger_keyword"]
             )
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # It's okay if the file doesn't exist; defaults will be used.
+    except yaml.YAMLError as e:
+        print(f"Warning: Error parsing personalization.yaml: {e}. Using default settings.")
     return defaults
 
 

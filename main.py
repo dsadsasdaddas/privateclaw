@@ -1,145 +1,88 @@
 import os
-from openai import OpenAI
+from pathlib import Path
 import yaml
-import json
+from openai import OpenAI
+
 from tools import AVAILABLE_TOOLS
 from state_thinking import AgentFSM
+from deepsearch import DeepSearch
+from context_memory import MemoryContextManager
+from agent_runtime import AgentRuntime
 
 
-
-
-
-
-client = OpenAI(
-api_key=(""),#buyao xie lou
-base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-    )
-
-#CALL THE LLM
-
-def call_model(user_input:str, history_list: list):
-    history_list.append({"role":"user","content":user_input})
-
-
-    
-    response = client.chat.completions.create(
-        model="qwen3.5-plus",
-        messages=history_list,
-        stream=False
-        )
-    #export DASHSCOPE_API_KEY= "<API_KEY>"
-
-    message =  response.choices[0].message
-    print(response)
-    msg_dict =  message.model_dump(exclude_none=True)
-    if msg_dict.get("content") is None:
-            msg_dict["content"] = ""
-        
-    history_list.append(msg_dict)
-    return msg_dict["content"]
-        
-
-def llm_router(user_input: str)->str:
-    messages = [
-          {
-            "role":"system",
-            "content":"你是一个严格的意图分类器。如果用户的输入需要搜索外部信息、查天气、查新闻或执行代码类似复杂任务或者用户要求要用复杂模式，请仅回复 'COMPLEX'。如果用户只是简单的日常闲聊、打招呼或情感交流，请仅回复 'SIMPLE'。除了这两个词，绝对不要输出任何标点符号或额外字符。"
-          },
-          {"role":"user", "content": user_input}
-     ]
-
-    response = client.chat.completions.create(
-          model = "qwen-turbo",
-          messages = messages,
-          temperature = 0.0,
-          stream = False    
-
-     )
-    
-    result = response.choices[0].message.content.strip().upper()
-
-    if "COMPLEX" in result:
-        return "COMPLEX"
-    return "SIMPLE"
-
-
-           
-
-
-    
-    
-
-
-          
-
-     
-
-           
-
-
-    
-    
-
-#deactivate python -m venv myenv  .\myenv\Scripts\activate python main.py
-def _read_yaml_file(file_path:str)->list:
-    if not os.path.exists(file_path):
-        return []
-    
+def load_personalization() -> dict:
+    defaults = {
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "models": {
+            "chat": "qwen3.5-plus",
+            "router": "qwen-turbo",
+            "fsm": "qwen-max",
+            "plan": "qwen-turbo",
+            "summary": "qwen-plus",
+        },
+        "deepsearch_trigger_keyword": "深度搜索",
+    }
     try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            date = yaml.safe_load(file)
-            if date is None:
-                return []
-            return date
-    except Exception as e:
-        return[]
+        with open("personalization.yaml", "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+            defaults["api_key_env"] = raw.get("api_key_env", defaults["api_key_env"])
+            defaults["base_url"] = raw.get("base_url", defaults["base_url"])
+            models = raw.get("models", {})
+            for key in defaults["models"]:
+                defaults["models"][key] = models.get(key, defaults["models"][key])
+            defaults["deepsearch_trigger_keyword"] = raw.get(
+                "deepsearch_trigger_keyword", defaults["deepsearch_trigger_keyword"]
+            )
+    except Exception:
+        pass
+    return defaults
 
 
-def load_tool_config(file_path:str)->list:#载入文件
-    core_tools = _read_yaml_file("tool_config.yaml")
-    dynamic_tools = _read_yaml_file("dynamic_config.yaml")
+def load_tool_config() -> list:
+    def _read_yaml(file_path: str):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or []
+        except Exception:
+            return []
 
+    core_tools = _read_yaml("tool_config.yaml")
+    dynamic_tools = _read_yaml("dynamic_config.yaml")
     if isinstance(dynamic_tools, dict):
         dynamic_tools = [dynamic_tools]
     if not isinstance(dynamic_tools, list):
-        dynamic_tools = [] 
+        dynamic_tools = []
     return core_tools + dynamic_tools
-    
 
 
-
-
-
+def build_client(personalization: dict) -> OpenAI:
+    api_key_env = personalization["api_key_env"]
+    api_key = os.getenv(api_key_env, "").strip()
+    if not api_key:
+        raise RuntimeError(f"Missing {api_key_env}. Please set it in environment variables.")
+    return OpenAI(api_key=api_key, base_url=personalization["base_url"])
 
 
 def main():
-        
-    tool_config = load_tool_config("tool_config.yaml")
+    personalization = load_personalization()
+    client = build_client(personalization)
 
+    memory_manager = MemoryContextManager(client=client, root_dir=Path(__file__).resolve().parent)
+    memory_manager.ensure_md_files()
 
-    fsm_agent = AgentFSM(client, tool_config,AVAILABLE_TOOLS)
+    tool_config = load_tool_config()
+    fsm_agent = AgentFSM(client, tool_config, AVAILABLE_TOOLS)
+    deep_search_agent = DeepSearch(client)
 
-    chat_history = [
-        {"role":"system", "content":"你是一个无敌的助手,不完成任务不结束对话"}
-    ]
-
-
-    while True:
-        user_input = input("User:")
-        if user_input == "quit":
-            break
-
-        task_type = llm_router(user_input)
-
-        if task_type == "COMPLEX":
-            result = fsm_agent.run(user_input)
-        else:
-            result = call_model(user_input,chat_history)
-       
-
-        
-        print(f"output:{result}")
-        
+    runtime = AgentRuntime(
+        client=client,
+        memory_manager=memory_manager,
+        deep_search_agent=deep_search_agent,
+        fsm_agent=fsm_agent,
+        personalization=personalization,
+    )
+    runtime.run()
 
 
 if __name__ == "__main__":

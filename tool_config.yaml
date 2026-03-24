@@ -58,3 +58,35 @@
         - skill_name
         - python_code
         - yaml_config
+- type: function
+  function:
+    name: exec_cli_command
+    description: |
+      受控命令执行工具。Agent 在调用前必须先征求人类同意。
+      本工具内部会拒绝危险命令（如 rm、shutdown、mkfs 等）。
+    parameters:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 需要执行的命令字符串。
+      required:
+        - command
+- type: function
+  function:
+    name: schedule_cli_command
+    description: |
+      定时执行命令工具。适用于用户明确提出“几秒后/几分钟后执行某命令”的需求。
+      危险命令会被自动拒绝。
+    parameters:
+      type: object
+      properties:
+        delay_seconds:
+          type: integer
+          description: 距离执行时间的秒数，必须大于 0。
+        command:
+          type: string
+          description: 到点后要执行的命令。
+      required:
+        - delay_seconds
+        - command

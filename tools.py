@@ -6,6 +6,8 @@ import traceback
 import os
 import shlex
 import subprocess
+import threading
+import uuid
 
 
 
@@ -74,6 +76,8 @@ DANGEROUS_COMMANDS = {
     "chown",
 }
 
+SCHEDULED_TASKS = {}
+
 
 def is_dangerous_command(command: str) -> bool:
     try:
@@ -117,6 +121,40 @@ def exec_cli_command(command: str) -> str:
         return f"命令执行失败（code={result.returncode})\\nstdout:\\n{stdout}\\nstderr:\\n{stderr}"
     except Exception as e:
         return f"命令执行异常：{e}"
+
+
+def schedule_cli_command(delay_seconds: int, command: str) -> str:
+    """
+    定时执行 CLI 命令（秒级）。
+    - 仅在到点时执行
+    - 底层复用 exec_cli_command（危险命令仍会被拦截）
+    """
+    if delay_seconds <= 0:
+        return "delay_seconds 必须大于 0。"
+    if delay_seconds > 86400:
+        return "delay_seconds 过大，当前仅支持 86400 秒内任务。"
+    if is_dangerous_command(command):
+        return "已拒绝定时任务：检测到危险命令。"
+
+    task_id = uuid.uuid4().hex[:8]
+
+    def _run():
+        result = exec_cli_command(command)
+        SCHEDULED_TASKS[task_id]["status"] = "done"
+        SCHEDULED_TASKS[task_id]["result"] = result
+        print(f"[SCHEDULE][{task_id}] command done: {command} -> {str(result)[:180]}")
+
+    timer = threading.Timer(delay_seconds, _run)
+    timer.daemon = True
+    SCHEDULED_TASKS[task_id] = {
+        "status": "scheduled",
+        "delay_seconds": delay_seconds,
+        "command": command,
+        "result": "",
+    }
+    timer.start()
+
+    return f"定时任务已创建，task_id={task_id}，将在 {delay_seconds} 秒后执行：{command}"
 
 
 
@@ -167,4 +205,5 @@ AVAILABLE_TOOLS = {
     "execute_python_code": execute_python_code,
     "create_new_skills": create_new_skills,
     "exec_cli_command": exec_cli_command,
+    "schedule_cli_command": schedule_cli_command,
 } 

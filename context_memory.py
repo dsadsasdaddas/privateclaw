@@ -3,6 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import yaml
+
+
+def _load_model_router() -> str:
+    try:
+        with open("personalization.yaml", "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+            return (raw.get("models", {}) or {}).get("router", "qwen-turbo")
+    except Exception:
+        return "qwen-turbo"
+
+
+ROUTER_MODEL = _load_model_router()
 
 
 @dataclass
@@ -81,7 +94,7 @@ class MemoryContextManager:
         recent_context = "\n".join(recent_lines[-12:])
         try:
             response = self.client.chat.completions.create(
-                model="qwen-turbo",
+                model=ROUTER_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -98,8 +111,8 @@ class MemoryContextManager:
             updated = (response.choices[0].message.content or "").strip()
             if updated:
                 self.soul_md.write_text(updated + "\n", encoding="utf-8")
-        except Exception as e:
-            print(f"Warning: Failed to update soul file: {e}")
+        except Exception:
+            pass
 
     def compact_history_if_needed(self, history_list: list, max_chars: int = 12000) -> list:
         """
@@ -128,7 +141,7 @@ class MemoryContextManager:
         joined = "\n".join(lines)
         try:
             response = self.client.chat.completions.create(
-                model="qwen-turbo",
+                model=ROUTER_MODEL,
                 messages=[
                     {
                         "role": "system",

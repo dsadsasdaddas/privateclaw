@@ -1,5 +1,18 @@
 import json
 from datetime import datetime
+import yaml
+
+
+def _load_fsm_model() -> str:
+    try:
+        with open("personalization.yaml", "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+            return (raw.get("models", {}) or {}).get("fsm", "qwen-max")
+    except Exception:
+        return "qwen-max"
+
+
+FSM_MODEL = _load_fsm_model()
 
 
 def _is_no_review_command(command: str) -> bool:
@@ -32,7 +45,7 @@ class AgentFSM:
         self.tool_config = tool_config
         self.available_tools = available_tools
         self.external_model = external_model
-        self.session_messages = [{"role":"system", "content":"你是一个无敌的助手,不完成任务不结束对话"} ]
+        self.session_messages = [{"role":"system", "content": "你是一个无敌的助手,不完成任务不结束对话"} ]
         self.current_tool_calls = []
         self.final_answer = ""
     
@@ -52,7 +65,7 @@ class AgentFSM:
     
     def _think(self):
         response = self.client.chat.completions.create(
-            model="qwen-max",
+            model=FSM_MODEL,
             messages=self.session_messages,
             tools = self.tool_config,
             stream=False
@@ -103,6 +116,16 @@ class AgentFSM:
                                 tool_result = "用户拒绝执行该命令。"
                             else:
                                 tool_result = func(**json_args)
+                    elif func_name == "schedule_cli_command":
+                        command = json_args.get("command", "")
+                        delay_seconds = json_args.get("delay_seconds", 0)
+                        user_confirm = input(
+                            f"Agent 想创建定时任务：{delay_seconds} 秒后执行 `{command}`\n是否同意？(yes/no): "
+                        ).strip().lower()
+                        if user_confirm not in {"yes", "y"}:
+                            tool_result = "用户拒绝创建该定时任务。"
+                        else:
+                            tool_result = func(**json_args)
                     else:
                         tool_result = func(**json_args)
                 except json.JSONDecodeError as e:

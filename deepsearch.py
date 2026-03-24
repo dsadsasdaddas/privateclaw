@@ -5,6 +5,24 @@ from typing import Any, Dict, List, Optional, TypedDict
 from ddgs import DDGS
 from langgraph.graph import END, START, StateGraph
 from playwright.async_api import BrowserContext, Page, Playwright, TimeoutError, async_playwright
+import yaml
+
+
+def _load_models() -> dict:
+    defaults = {"plan": "qwen-turbo", "router": "qwen-turbo", "summary": "qwen-plus"}
+    try:
+        with open("personalization.yaml", "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+            models = raw.get("models", {}) or {}
+            defaults["plan"] = models.get("plan", defaults["plan"])
+            defaults["router"] = models.get("router", defaults["router"])
+            defaults["summary"] = models.get("summary", defaults["summary"])
+    except Exception:
+        pass
+    return defaults
+
+
+MODELS = _load_models()
 
 
 class AgentState(TypedDict, total=False):
@@ -90,7 +108,7 @@ class DeepSearch:
 
         try:
             response = self.client.chat.completions.create(
-                model="qwen-turbo",
+                model=MODELS["plan"],
                 messages=[
                     {
                         "role": "system",
@@ -107,8 +125,8 @@ class DeepSearch:
                 cleaned = [str(x).strip() for x in candidates if str(x).strip()]
                 if cleaned:
                     subqueries = cleaned[:5]
-        except Exception as e:
-            print(f"Warning: Failed to generate subqueries, falling back to original query. Error: {e}")
+        except Exception:
+            pass
 
         return {
             "subqueries": subqueries,
@@ -272,7 +290,7 @@ class DeepSearch:
 
         try:
             response = self.client.chat.completions.create(
-                model="qwen-turbo",
+                model=MODELS["router"],
                 messages=[
                     {
                         "role": "system",
@@ -312,7 +330,7 @@ class DeepSearch:
 
         try:
             response = self.client.chat.completions.create(
-                model="qwen-plus",
+                model=MODELS["summary"],
                 messages=[
                     {
                         "role": "system",

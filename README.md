@@ -12,6 +12,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 - **Automatic Context Compression** when history becomes large.
 - **Deep Search Workflow** with multi-round query planning, page reading, reflection, and summarization.
 - **Safe CLI Execution** through `exec_cli_command` with dangerous-command blocking and human confirmation.
+- **Scheduled Execution** through `schedule_cli_command` (run command after a delay).
 - **Heartbeat Runtime** while `main.py` is running.
 
 ### 中文
@@ -19,6 +20,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 - 当上下文过长时自动执行**历史压缩**。
 - 提供**深度搜索流程**：多轮检索、页面读取、反思与总结。
 - 提供**安全命令执行**：`exec_cli_command` 可拦截危险命令并在执行前征求确认。
+- 提供**定时执行能力**：`schedule_cli_command` 可在延迟后执行命令。
 - `main.py` 运行期间有**心跳输出**。
 
 ---
@@ -28,6 +30,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 ```text
 .
 ├── main.py               # Main CLI entry / 主入口
+├── agent_runtime.py      # Runtime orchestration / 运行时编排
 ├── state_thinking.py     # FSM agent loop / 状态机执行循环
 ├── deepsearch.py         # Deep search workflow / 深度搜索流程
 ├── context_memory.py     # Memory manager / 记忆管理器
@@ -48,7 +51,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 2. Install dependencies:
 
 ```bash
-pip install openai pyyaml ddgs langgraph playwright
+pip install openai pyyaml ddgs langgraph playwright lark-oapi
 python -m playwright install chromium
 ```
 
@@ -63,7 +66,7 @@ export DASHSCOPE_API_KEY="your_api_key"
 2. 安装依赖：
 
 ```bash
-pip install openai pyyaml ddgs langgraph playwright
+pip install openai pyyaml ddgs langgraph playwright lark-oapi
 python -m playwright install chromium
 ```
 
@@ -90,6 +93,24 @@ python main.py
 - Type `quit` to exit. / 输入 `quit` 退出。
 - Input containing `深度搜索` triggers deep search. / 输入包含 `深度搜索` 会触发深度搜索。
 
+### Echo Bot (Lark Long Connection) / 飞书长连接示例
+
+Set credentials for `echo_bot/python/main.py`:
+
+```bash
+export LARK_APP_ID="your_app_id"
+export LARK_APP_SECRET="your_app_secret"
+python echo_bot/python/main.py
+```
+
+Windows PowerShell:
+
+```powershell
+$env:LARK_APP_ID="your_app_id"
+$env:LARK_APP_SECRET="your_app_secret"
+python echo_bot/python/main.py
+```
+
 ---
 
 ## Tool: `exec_cli_command` / 命令执行工具
@@ -103,6 +124,18 @@ python main.py
 - 由 Agent 自主判断是否需要执行命令。
 - 执行前会先征求人类明确同意。
 - 危险命令（例如 `rm`、`shutdown`、`mkfs`）会被拦截。
+
+## Tool: `schedule_cli_command` / 定时命令工具
+
+### English
+- Use this when users ask to execute a command after a delay.
+- Example intent: “Run `echo hello` after 30 seconds”.
+- Dangerous commands are rejected automatically.
+
+### 中文
+- 当用户提出“过一段时间再执行命令”时使用。
+- 示例意图：“30 秒后执行 `echo hello`”。
+- 危险命令会被自动拒绝。
 
 ---
 
@@ -120,3 +153,5 @@ python main.py
   请将密钥保存在环境变量中，不要硬编码到仓库。
 - This project is currently optimized for interactive local CLI usage.  
   当前项目主要面向本地 CLI 交互场景。
+- Personalized options are configured in `personalization.yaml` (API key env name, base URL, model choices, deep-search trigger keyword).  
+  个性化选项通过 `personalization.yaml` 配置（API Key 环境变量名、Base URL、模型选择、深度搜索触发词）。

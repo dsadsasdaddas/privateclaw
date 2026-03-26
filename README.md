@@ -115,12 +115,12 @@ python main.py
 
 ### English
 - The agent decides whether command execution is needed.
-- Before execution, the agent asks for explicit human permission.
+- Before execution, the agent sends an approval message in Feishu and waits for user `yes/no`.
 - Dangerous commands (for example `rm`, `shutdown`, `mkfs`) are blocked.
 
 ### 中文
 - 由 Agent 自主判断是否需要执行命令。
-- 执行前会先征求人类明确同意。
+- 执行前会在飞书里发审批消息，等待用户回复 `yes/no`。
 - 危险命令（例如 `rm`、`shutdown`、`mkfs`）会被拦截。
 
 ## Tool: `schedule_cli_command` / 定时命令工具

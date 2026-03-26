@@ -62,3 +62,7 @@ MESSAGE_ENTRY=cli python main.py
 - `models.plan`
 - `models.summary`
 - `deepsearch_trigger_keyword`
+
+## 8) 工具审批方式（飞书）
+- `exec_cli_command` 与 `schedule_cli_command` 的审批不再使用终端 `input()`。
+- Agent 会在飞书会话中发送审批请求，用户通过回复 `yes/no` 完成确认。

@@ -48,6 +48,7 @@ class AgentFSM:
         self.session_messages_map = {}
         self.current_tool_calls = []
         self.final_answer = ""
+        self.approval_handler = None
     
 #cheng xu qi dong
     def _get_session_messages(self, session_id: str):
@@ -68,7 +69,7 @@ class AgentFSM:
             if self.state == "THINKING":
                 self._think(session_messages)
             elif self.state == "EXECUTING":
-                self._execute(session_messages)
+                self._execute(session_messages, session_id=session_id)
         return self.final_answer
     
     def _think(self, session_messages):
@@ -95,7 +96,15 @@ class AgentFSM:
             self.state = "FINISHED"
 
 
-    def _execute(self, session_messages):
+    def _request_approval(self, session_id: str, prompt: str) -> bool:
+        if self.approval_handler is None:
+            return False
+        try:
+            return bool(self.approval_handler(session_id=session_id, prompt=prompt))
+        except Exception:
+            return False
+
+    def _execute(self, session_messages, session_id: str):
         for idx, tool_call in enumerate(self.current_tool_calls, start=1):
             
         
@@ -119,18 +128,22 @@ class AgentFSM:
                         if _is_no_review_command(command):
                             tool_result = func(**json_args)
                         else:
-                            user_confirm = input(f"Agent 想执行命令: {command}\n是否同意执行？(yes/no): ").strip().lower()
-                            if user_confirm not in {"yes", "y"}:
+                            approved = self._request_approval(
+                                session_id=session_id,
+                                prompt=f"Agent 想执行命令：`{command}`。回复 yes 同意，回复 no 拒绝。",
+                            )
+                            if not approved:
                                 tool_result = "用户拒绝执行该命令。"
                             else:
                                 tool_result = func(**json_args)
                     elif func_name == "schedule_cli_command":
                         command = json_args.get("command", "")
                         delay_seconds = json_args.get("delay_seconds", 0)
-                        user_confirm = input(
-                            f"Agent 想创建定时任务：{delay_seconds} 秒后执行 `{command}`\n是否同意？(yes/no): "
-                        ).strip().lower()
-                        if user_confirm not in {"yes", "y"}:
+                        approved = self._request_approval(
+                            session_id=session_id,
+                            prompt=f"Agent 想创建定时任务：{delay_seconds} 秒后执行 `{command}`。回复 yes 同意，回复 no 拒绝。",
+                        )
+                        if not approved:
                             tool_result = "用户拒绝创建该定时任务。"
                         else:
                             tool_result = func(**json_args)

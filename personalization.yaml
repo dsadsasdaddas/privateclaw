@@ -1,0 +1,13 @@
+# Personalized runtime settings (editable)
+api_key_env: DASHSCOPE_API_KEY
+base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+models:
+  chat: qwen3.5-plus
+  router: qwen-turbo
+  fsm: qwen-max
+  plan: qwen-turbo
+  summary: qwen-plus
+
+# Optional custom trigger keyword
+deepsearch_trigger_keyword: 深度搜索

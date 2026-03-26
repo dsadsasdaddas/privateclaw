@@ -45,28 +45,36 @@ class AgentFSM:
         self.tool_config = tool_config
         self.available_tools = available_tools
         self.external_model = external_model
-        self.session_messages = [{"role":"system", "content": "你是一个无敌的助手,不完成任务不结束对话"} ]
+        self.session_messages_map = {}
         self.current_tool_calls = []
         self.final_answer = ""
     
 #cheng xu qi dong
-    def run(self, user_input:str) -> str:
-        self.session_messages.append({"role":"user", "content":  user_input})
+    def _get_session_messages(self, session_id: str):
+        if session_id not in self.session_messages_map:
+            self.session_messages_map[session_id] = [
+                {"role":"system", "content": "你是一个无敌的助手,不完成任务不结束对话"}
+            ]
+        return self.session_messages_map[session_id]
+
+    def run(self, user_input:str, session_id: str = "default") -> str:
+        session_messages = self._get_session_messages(session_id)
+        session_messages.append({"role":"user", "content":  user_input})
         self.state = "THINKING"
         
 
         while self.state != "FINISHED":
 
             if self.state == "THINKING":
-                self._think()
+                self._think(session_messages)
             elif self.state == "EXECUTING":
-                self._execute()
+                self._execute(session_messages)
         return self.final_answer
     
-    def _think(self):
+    def _think(self, session_messages):
         response = self.client.chat.completions.create(
             model=FSM_MODEL,
-            messages=self.session_messages,
+            messages=session_messages,
             tools = self.tool_config,
             stream=False
 
@@ -77,7 +85,7 @@ class AgentFSM:
         msg_dict = message.model_dump(exclude_none = True)
         if msg_dict.get("content") is None:
             msg_dict["content"] = ""
-        self.session_messages.append(msg_dict)
+        session_messages.append(msg_dict)
 
         if message.tool_calls:
             self.current_tool_calls = message.tool_calls
@@ -87,7 +95,7 @@ class AgentFSM:
             self.state = "FINISHED"
 
 
-    def _execute(self):
+    def _execute(self, session_messages):
         for idx, tool_call in enumerate(self.current_tool_calls, start=1):
             
         
@@ -149,7 +157,7 @@ class AgentFSM:
         }
             preview = str(tool_result).replace("\n", " ")[:180]
             print(f"[TOOL][{idx}] {datetime.now().strftime('%H:%M:%S')} done: {func_name} -> {preview}")
-            self.session_messages.append(tool_response)
+            session_messages.append(tool_response)
     
         self.state = "THINKING"
         print("继续思考")

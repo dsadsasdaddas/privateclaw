@@ -82,7 +82,12 @@ def main():
         fsm_agent=fsm_agent,
         personalization=personalization,
     )
-    runtime.run()
+    message_entry = os.getenv("MESSAGE_ENTRY", "cli").strip().lower()
+    if message_entry == "feishu":
+        from feishu_entry import FeishuEntry
+        FeishuEntry(runtime).run()
+    else:
+        runtime.run()
 
 
 if __name__ == "__main__":

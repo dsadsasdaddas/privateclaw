@@ -72,6 +72,7 @@ class AgentFSM:
         return self.final_answer
     
     def _think(self, session_messages):
+        print(f"[DEBUG] {datetime.now().strftime('%H:%M:%S')} model_start | fsm_think")
         response = self.client.chat.completions.create(
             model=FSM_MODEL,
             messages=session_messages,
@@ -93,6 +94,7 @@ class AgentFSM:
         else:
             self.final_answer = message.content
             self.state = "FINISHED"
+        print(f"[DEBUG] {datetime.now().strftime('%H:%M:%S')} model_end | fsm_state={self.state}")
 
 
     def _execute(self, session_messages):

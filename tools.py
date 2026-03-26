@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import threading
 import uuid
+import re
 
 
 
@@ -80,21 +81,42 @@ SCHEDULED_TASKS = {}
 
 
 def is_dangerous_command(command: str) -> bool:
+    if not isinstance(command, str) or not command.strip():
+        return True
+
+    command_segments = [
+        segment.strip()
+        for segment in re.split(r"(?:\r?\n|;|&&|\|\||\|)", command)
+        if segment.strip()
+    ]
+    if not command_segments:
+        return True
+
+    if re.search(r"\bsudo\s+rm\b", command, flags=re.IGNORECASE):
+        return True
+    if ":(){:|:&};:" in command.replace(" ", ""):
+        return True
+
+    risky_patterns = [r"\brm\s+-", r"\bmkfs\b", r"\bshutdown\b", r"\breboot\b", r"\bpoweroff\b"]
+
+    for segment in command_segments:
+        if re.search("|".join(risky_patterns), segment, flags=re.IGNORECASE):
+            return True
+
     try:
-        tokens = shlex.split(command)
+        parsed_segments = [shlex.split(segment) for segment in command_segments]
     except Exception:
         return True
 
-    if not tokens:
-        return True
+    for tokens in parsed_segments:
+        if not tokens:
+            continue
 
-    first = tokens[0].lower()
-    if first in DANGEROUS_COMMANDS:
-        return True
+        first = tokens[0].lower()
+        if first in DANGEROUS_COMMANDS:
+            return True
 
-    risky_patterns = [" rm ", " rm-", "sudo rm", "mkfs", "shutdown", "reboot", "poweroff", ":(){:|:&};:"]
-    normalized = f" {command.lower()} "
-    return any(pattern in normalized for pattern in risky_patterns)
+    return False
 
 
 def exec_cli_command(command: str) -> str:

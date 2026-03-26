@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 import yaml
+import shlex
 
 
 def _load_fsm_model() -> str:
@@ -19,24 +20,42 @@ def _is_no_review_command(command: str) -> bool:
     """
     仅对白名单内、纯只读且不包含 shell 连接符的命令免审核。
     """
-    safe_prefixes = (
-        "pwd",
-        "ls",
-        "ls -la",
-        "whoami",
-        "date",
-        "uname -a",
-        "python --version",
-        "pip --version",
-        "cat ",
-        "head ",
-        "tail ",
-        "echo ",
-    )
-    blocked_tokens = [";", "|", "&&", "||", ">", "<", "$(", "`"]
+    if not isinstance(command, str) or not command.strip():
+        return False
+
+    blocked_tokens = ["\n", "\r", ";", "|", "&", ">", "<", "$(", "`"]
     if any(token in command for token in blocked_tokens):
         return False
-    return command.strip().startswith(safe_prefixes)
+
+    try:
+        tokens = shlex.split(command)
+    except Exception:
+        return False
+
+    if not tokens:
+        return False
+
+    cmd = tokens[0].lower()
+    args = tokens[1:]
+
+    if cmd in {"pwd", "whoami"}:
+        return len(args) == 0
+    if cmd == "date":
+        return True
+    if cmd == "ls":
+        return True
+    if cmd == "uname":
+        return args == ["-a"]
+    if cmd == "python":
+        return args == ["--version"]
+    if cmd == "pip":
+        return args == ["--version"]
+    if cmd in {"cat", "head", "tail"}:
+        return len(args) >= 1
+    if cmd == "echo":
+        return True
+
+    return False
 
 class AgentFSM:
     def __init__(self,client,tool_config,available_tools, external_model=None):

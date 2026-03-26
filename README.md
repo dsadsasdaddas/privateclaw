@@ -1,7 +1,7 @@
 # PrivateClaw / 私爪助手
 
-A local CLI AI assistant with persistent memory, deep search, and controlled command execution.  
-一个支持长期记忆、深度搜索与受控命令执行的本地命令行 AI 助手。
+A local AI assistant with persistent memory, deep search, controlled command execution, and Feishu message ingress.  
+一个支持长期记忆、深度搜索、受控命令执行与飞书消息入口的 AI 助手。
 
 ---
 
@@ -13,6 +13,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 - **Deep Search Workflow** with multi-round query planning, page reading, reflection, and summarization.
 - **Safe CLI Execution** through `exec_cli_command` with dangerous-command blocking and human confirmation.
 - **Scheduled Execution** through `schedule_cli_command` (run command after a delay).
+- **Feishu Single-Channel Ingress** via long connection in `main.py`.
 - **Heartbeat Runtime** while `main.py` is running.
 
 ### 中文
@@ -21,6 +22,7 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 - 提供**深度搜索流程**：多轮检索、页面读取、反思与总结。
 - 提供**安全命令执行**：`exec_cli_command` 可拦截危险命令并在执行前征求确认。
 - 提供**定时执行能力**：`schedule_cli_command` 可在延迟后执行命令。
+- 提供**飞书单通道接入**（长连接消息入口）。
 - `main.py` 运行期间有**心跳输出**。
 
 ---
@@ -29,8 +31,10 @@ A local CLI AI assistant with persistent memory, deep search, and controlled com
 
 ```text
 .
-├── main.py               # Main CLI entry / 主入口
+├── main.py               # Main entry (Feishu by default) / 主入口（默认飞书）
 ├── agent_runtime.py      # Runtime orchestration / 运行时编排
+├── channel_layer.py      # Channel payload normalization / 渠道消息清洗层
+├── feishu_entry.py       # Feishu long-connection ingress / 飞书长连接入口
 ├── state_thinking.py     # FSM agent loop / 状态机执行循环
 ├── deepsearch.py         # Deep search workflow / 深度搜索流程
 ├── context_memory.py     # Memory manager / 记忆管理器
@@ -86,21 +90,12 @@ $env:DASHSCOPE_API_KEY="你的key"
 
 ## Run / 运行
 
-```bash
-python main.py
-```
-
-- Type `quit` to exit. / 输入 `quit` 退出。
-- Input containing `深度搜索` triggers deep search. / 输入包含 `深度搜索` 会触发深度搜索。
-
-### Echo Bot (Lark Long Connection) / 飞书长连接示例
-
-Set credentials for `echo_bot/python/main.py`:
+Set Feishu credentials:
 
 ```bash
 export LARK_APP_ID="your_app_id"
 export LARK_APP_SECRET="your_app_secret"
-python echo_bot/python/main.py
+python main.py
 ```
 
 Windows PowerShell:
@@ -108,8 +103,11 @@ Windows PowerShell:
 ```powershell
 $env:LARK_APP_ID="your_app_id"
 $env:LARK_APP_SECRET="your_app_secret"
-python echo_bot/python/main.py
+python main.py
 ```
+
+- Default entry is Feishu single-channel ingress.
+- If you need local CLI mode temporarily: `MESSAGE_ENTRY=cli python main.py`.
 
 ---
 
@@ -151,7 +149,7 @@ python echo_bot/python/main.py
 
 - Keep API keys in environment variables; never hardcode secrets.  
   请将密钥保存在环境变量中，不要硬编码到仓库。
-- This project is currently optimized for interactive local CLI usage.  
-  当前项目主要面向本地 CLI 交互场景。
+- This project is currently optimized for Feishu single-channel ingress.  
+  当前项目主要面向飞书单通道消息接入场景。
 - Personalized options are configured in `personalization.yaml` (API key env name, base URL, model choices, deep-search trigger keyword).  
   个性化选项通过 `personalization.yaml` 配置（API Key 环境变量名、Base URL、模型选择、深度搜索触发词）。

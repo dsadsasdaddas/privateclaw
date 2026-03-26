@@ -34,10 +34,8 @@ def load_personalization() -> dict:
             defaults["deepsearch_trigger_keyword"] = raw.get(
                 "deepsearch_trigger_keyword", defaults["deepsearch_trigger_keyword"]
             )
-    except FileNotFoundError:
-        pass  # It's okay if the file doesn't exist; defaults will be used.
-    except yaml.YAMLError as e:
-        print(f"Warning: Error parsing personalization.yaml: {e}. Using default settings.")
+    except Exception:
+        pass
     return defaults
 
 
@@ -84,7 +82,12 @@ def main():
         fsm_agent=fsm_agent,
         personalization=personalization,
     )
-    runtime.run()
+    message_entry = os.getenv("MESSAGE_ENTRY", "feishu").strip().lower()
+    if message_entry == "cli":
+        runtime.run()
+    else:
+        from feishu_entry import FeishuEntry
+        FeishuEntry(runtime).run()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import threading
 import time
 from pathlib import Path
 from uuid import uuid4
+from datetime import datetime
 
 
 class AgentRuntime:
@@ -15,6 +16,12 @@ class AgentRuntime:
         self.personalization = personalization
         self.session_histories = {}
         self.heartbeat_log_path = Path(__file__).resolve().parent / "heartbeat.log"
+
+    @staticmethod
+    def _debug(stage: str, detail: str = ""):
+        now = datetime.now().strftime("%H:%M:%S")
+        suffix = f" | {detail}" if detail else ""
+        print(f"[DEBUG] {now} {stage}{suffix}")
 
     def _get_or_create_history(self, session_id: str):
         if session_id not in self.session_histories:
@@ -33,6 +40,7 @@ class AgentRuntime:
         return session_id, user_input, metadata
 
     def _call_model(self, session_id: str, user_input: str):
+        self._debug("model_start", f"session={session_id}")
         chat_history = self._get_or_create_history(session_id)
         messages = [{"role": "system", "content": self.memory_manager.build_system_context()}]
         messages.extend(chat_history)
@@ -48,9 +56,11 @@ class AgentRuntime:
 
         chat_history.append({"role": "user", "content": user_input})
         chat_history.append({"role": "assistant", "content": content})
+        self._debug("model_end", f"session={session_id} len={len(content)}")
         return content
 
     def _route_task(self, user_input: str) -> str:
+        self._debug("router_start")
         response = self.client.chat.completions.create(
             model=self.personalization["models"]["router"],
             messages=[
@@ -64,7 +74,9 @@ class AgentRuntime:
             stream=False,
         )
         result = (response.choices[0].message.content or "").strip().upper()
-        return "COMPLEX" if "COMPLEX" in result else "SIMPLE"
+        route = "COMPLEX" if "COMPLEX" in result else "SIMPLE"
+        self._debug("router_end", f"route={route}")
+        return route
 
     def _start_heartbeat(self, stop_event: threading.Event):
         while not stop_event.is_set():
@@ -91,10 +103,19 @@ class AgentRuntime:
             else:
                 result = self._call_model(session_id, user_input)
 
+        self._debug("memory_start", f"session={session_id}")
         self.memory_manager.update_memory(user_input, result)
+        self._debug("memory_end", f"session={session_id}")
+        self._debug("soul_start", f"session={session_id}")
         self.memory_manager.maybe_update_soul()
+        self._debug("soul_end", f"session={session_id}")
+        self._debug("compress_start", f"session={session_id}")
         chat_history = self._get_or_create_history(session_id)
         self.session_histories[session_id] = self.memory_manager.compact_history_if_needed(chat_history)
+        self._debug(
+            "compress_end",
+            f"session={session_id} size={len(self.session_histories[session_id])}",
+        )
         return {"session_id": session_id, "text": result, "metadata": metadata}
 
     def run(self):

@@ -1,13 +1,15 @@
-# 忽略虚拟环境文件夹
+# Python 虚拟环境（避免把本地环境提交到仓库）
 venv/
 .venv/
 env/
-
+.env/
 myenv/
-venv/
-__pycache__/
-.env
+ENV/
 
-# 忽略 Python 运行时产生的缓存文件
+# Python 缓存与编译产物
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# 本地环境变量文件
+.env

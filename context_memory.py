@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import re
 import yaml
 
 
@@ -30,6 +31,7 @@ class MemoryStore:
         self.memory_md = self.root_dir / "memory.md"
 
     def ensure_md_files(self) -> None:
+        self.root_dir.mkdir(parents=True, exist_ok=True)
         if not self.identity_md.exists():
             self.identity_md.write_text(
                 "# Identity\n\n- 你是一个可靠、务实、尊重用户意图的 AI 助手。\n",
@@ -207,32 +209,71 @@ class ContextAssembler:
 
 @dataclass
 class MemoryContextManager:
-    """兼容旧接口的门面类，内部拆分为 Store / Refiner / ContextAssembler 三个职责。"""
+    """
+    兼容旧接口的门面类，内部拆分为：
+    - MemoryStore（长期记忆存储）
+    - MemoryRefiner（记忆提取/整理/提炼）
+    - ContextAssembler（模型上下文拼接）
+
+    支持 user_scope_id：每个用户范围独立长期记忆目录。
+    """
 
     client: object
     root_dir: Path
     max_recent_lines: int = 40
 
     def __post_init__(self):
-        self.store = MemoryStore(root_dir=self.root_dir)
-        self.refiner = MemoryRefiner(
-            client=self.client,
-            store=self.store,
-            max_recent_lines=self.max_recent_lines,
-        )
-        self.assembler = ContextAssembler(store=self.store)
+        self.memory_scopes_dir = self.root_dir / "memory_scopes"
+        self._stores: dict[str, MemoryStore] = {}
+        self._refiners: dict[str, MemoryRefiner] = {}
+        self._assemblers: dict[str, ContextAssembler] = {}
 
-    def ensure_md_files(self) -> None:
-        self.store.ensure_md_files()
+    @staticmethod
+    def _sanitize_scope_id(user_scope_id: str | None) -> str:
+        raw = (user_scope_id or "default").strip() or "default"
+        return re.sub(r"[^a-zA-Z0-9._-]", "_", raw)
 
-    def build_system_context(self) -> str:
-        return self.assembler.build_system_context()
+    def _ensure_scope_components(self, user_scope_id: str | None):
+        scope = self._sanitize_scope_id(user_scope_id)
+        if scope not in self._stores:
+            scope_dir = self.memory_scopes_dir / scope
+            store = MemoryStore(root_dir=scope_dir)
+            refiner = MemoryRefiner(
+                client=self.client,
+                store=store,
+                max_recent_lines=self.max_recent_lines,
+            )
+            assembler = ContextAssembler(store=store)
+            self._stores[scope] = store
+            self._refiners[scope] = refiner
+            self._assemblers[scope] = assembler
+        return scope
 
-    def update_memory(self, user_input: str, assistant_output: str) -> None:
-        self.refiner.update_memory(user_input, assistant_output)
+    def ensure_md_files(self, user_scope_id: str | None = None) -> None:
+        scope = self._ensure_scope_components(user_scope_id)
+        self._stores[scope].ensure_md_files()
 
-    def maybe_update_soul(self) -> None:
-        self.refiner.maybe_update_soul()
+    def build_system_context(self, user_scope_id: str | None = None) -> str:
+        scope = self._ensure_scope_components(user_scope_id)
+        self._stores[scope].ensure_md_files()
+        return self._assemblers[scope].build_system_context()
 
-    def compact_history_if_needed(self, history_list: list, max_chars: int = 12000) -> list:
-        return self.refiner.compact_history_if_needed(history_list, max_chars=max_chars)
+    def update_memory(self, user_input: str, assistant_output: str, user_scope_id: str | None = None) -> None:
+        scope = self._ensure_scope_components(user_scope_id)
+        self._stores[scope].ensure_md_files()
+        self._refiners[scope].update_memory(user_input, assistant_output)
+
+    def maybe_update_soul(self, user_scope_id: str | None = None) -> None:
+        scope = self._ensure_scope_components(user_scope_id)
+        self._stores[scope].ensure_md_files()
+        self._refiners[scope].maybe_update_soul()
+
+    def compact_history_if_needed(
+        self,
+        history_list: list,
+        max_chars: int = 12000,
+        user_scope_id: str | None = None,
+    ) -> list:
+        scope = self._ensure_scope_components(user_scope_id)
+        self._stores[scope].ensure_md_files()
+        return self._refiners[scope].compact_history_if_needed(history_list, max_chars=max_chars)

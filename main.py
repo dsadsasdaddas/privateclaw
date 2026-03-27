@@ -7,6 +7,7 @@ from tools import AVAILABLE_TOOLS
 from state_thinking import AgentFSM
 from deepsearch import DeepSearch
 from context_memory import MemoryContextManager
+from agent_loop import AgentLoop
 from agent_runtime import AgentRuntime
 
 
@@ -75,13 +76,14 @@ def main():
     fsm_agent = AgentFSM(client, tool_config, AVAILABLE_TOOLS)
     deep_search_agent = DeepSearch(client)
 
-    runtime = AgentRuntime(
+    agent_loop = AgentLoop(
         client=client,
         memory_manager=memory_manager,
         deep_search_agent=deep_search_agent,
         fsm_agent=fsm_agent,
         personalization=personalization,
     )
+    runtime = AgentRuntime(agent_loop=agent_loop)
     message_entry = os.getenv("MESSAGE_ENTRY", "feishu").strip().lower()
     if message_entry == "cli":
         runtime.run()

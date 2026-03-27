@@ -35,7 +35,7 @@ python main.py
 
 ## 5) 功能触发
 - 输入包含 **“深度搜索”** 的内容时，会走 DeepSearch 多轮搜索流程。
-- 其他输入会继续走原有路由（SIMPLE / COMPLEX）。
+- 其他输入统一走 `agent_loop.py` 的单一思考执行循环（Plan / Execute / Observe），不再区分程序路由分支。
 
 ## 6) 飞书长连接配置（单通道入口）
 `main.py` 内置飞书长连接入口，需要以下环境变量：

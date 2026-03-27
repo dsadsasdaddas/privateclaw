@@ -4,7 +4,6 @@ import yaml
 from openai import OpenAI
 
 from tools import AVAILABLE_TOOLS
-from state_thinking import AgentFSM
 from deepsearch import DeepSearch
 from context_memory import MemoryContextManager
 from agent_loop import AgentLoop
@@ -73,14 +72,14 @@ def main():
     memory_manager.ensure_md_files()
 
     tool_config = load_tool_config()
-    fsm_agent = AgentFSM(client, tool_config, AVAILABLE_TOOLS)
     deep_search_agent = DeepSearch(client)
 
     agent_loop = AgentLoop(
         client=client,
         memory_manager=memory_manager,
         deep_search_agent=deep_search_agent,
-        fsm_agent=fsm_agent,
+        tool_config=tool_config,
+        available_tools=AVAILABLE_TOOLS,
         personalization=personalization,
     )
     runtime = AgentRuntime(agent_loop=agent_loop)

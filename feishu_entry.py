@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import time
 import threading
 
@@ -26,9 +27,15 @@ class FeishuEntry:
             raise RuntimeError("Missing LARK_APP_ID/LARK_APP_SECRET for feishu message entry.")
 
         self.client = lark.Client.builder().app_id(self.app_id).app_secret(self.app_secret).build()
-        self._dedup_ttl_seconds = int(os.getenv("FEISHU_DEDUP_TTL_SECONDS", "60"))
+        self._dedup_ttl_seconds = int(os.getenv("FEISHU_DEDUP_TTL_SECONDS", "7200"))
         self._recent_event_keys = {}
         self._dedup_lock = threading.Lock()
+
+        # 消息接收线程只入队，worker 线程负责业务处理和回复。
+        self._message_queue = queue.Queue()
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker_thread.start()
+
         self.event_handler = (
             lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(self._on_message)
@@ -78,15 +85,37 @@ class FeishuEntry:
     def _on_message(self, data: P2ImMessageReceiveV1) -> None:
         payload = runtime_payload_from_feishu(data)
         dedup_key = self._build_dedup_key(data, payload)
+
         if self._is_duplicate_event(dedup_key):
             print(f"[DEBUG] skip duplicated feishu event: {dedup_key}")
             return
+
         if not payload["text"]:
-            self._send_text(data, "parse message failed, please send text message")
+            # 非文本可直接快速回
+            self._message_queue.put(("reply_text", data, "parse message failed, please send text message"))
             return
 
-        result = self.runtime.handle_input(payload)
-        self._send_text(data, result["text"])
+        # 只入队，立刻返回
+        self._message_queue.put(("handle_runtime", data, payload))
+
+    def _worker_loop(self) -> None:
+        while True:
+            task_type, data, content = self._message_queue.get()
+            try:
+                if task_type == "reply_text":
+                    self._send_text(data, content)
+                elif task_type == "handle_runtime":
+                    payload = content
+                    result = self.runtime.handle_input(payload)
+                    self._send_text(data, result["text"])
+            except Exception as e:
+                print(f"[ERROR] worker handle message failed: {e}")
+                try:
+                    self._send_text(data, "处理消息时发生错误，请稍后重试。")
+                except Exception as send_err:
+                    print(f"[ERROR] send error message failed: {send_err}")
+            finally:
+                self._message_queue.task_done()
 
     def _build_dedup_key(self, data: P2ImMessageReceiveV1, payload: dict) -> str:
         event_id = ""

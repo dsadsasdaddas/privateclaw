@@ -10,6 +10,8 @@ class RuntimeMessage:
     chat_type: str
     chat_id: str
     message_id: str
+    user_scope_id: str
+    conversation_id: str = ""
 
 
 def _safe_get_sender_open_id(data) -> str:
@@ -40,6 +42,7 @@ def normalize_feishu_event(data) -> RuntimeMessage:
         chat_type=message.chat_type,
         chat_id=message.chat_id,
         message_id=message.message_id,
+        user_scope_id=session_id,
     )
 
 
@@ -52,4 +55,6 @@ def runtime_payload_from_feishu(data) -> dict:
         "chat_type": normalized.chat_type,
         "chat_id": normalized.chat_id,
         "message_id": normalized.message_id,
+        "user_scope_id": normalized.user_scope_id,
+        "conversation_id": normalized.conversation_id,
     }

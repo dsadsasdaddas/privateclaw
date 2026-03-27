@@ -57,7 +57,57 @@ class AgentLoop:
             self.session_histories[conversation_id] = []
         return self.session_histories[conversation_id]
 
+
+    @staticmethod
+    def _build_tool_error_message(tool_call_id: str, name: str, reason: str) -> dict:
+        return {
+            "role": "tool",
+            "content": f"tool call not completed: {reason}",
+            "tool_call_id": tool_call_id,
+            "name": name,
+        }
+
+    def _repair_history(self, history: list[dict]) -> list[dict]:
+        """修复悬空 tool_calls，保证给模型和持久化前的历史结构合法。"""
+        repaired = []
+        i = 0
+        while i < len(history):
+            item = history[i]
+            repaired.append(item)
+            tool_calls = item.get("tool_calls") if isinstance(item, dict) else None
+            if item.get("role") == "assistant" and tool_calls:
+                required_ids = [tc.get("id") for tc in tool_calls if tc.get("id")]
+                j = i + 1
+                matched_ids = set()
+                buffered_following = []
+
+                while j < len(history):
+                    nxt = history[j]
+                    if isinstance(nxt, dict) and nxt.get("role") == "tool":
+                        buffered_following.append(nxt)
+                        tool_call_id = nxt.get("tool_call_id")
+                        if tool_call_id in required_ids:
+                            matched_ids.add(tool_call_id)
+                        j += 1
+                        continue
+                    break
+
+                repaired.extend(buffered_following)
+                missing_ids = [tid for tid in required_ids if tid not in matched_ids]
+                if missing_ids:
+                    for tc in tool_calls:
+                        tc_id = tc.get("id")
+                        if tc_id in missing_ids:
+                            name = ((tc.get("function") or {}).get("name") if isinstance(tc, dict) else "") or "unknown"
+                            repaired.append(self._build_tool_error_message(tc_id, name, "missing tool response patched"))
+
+                i = j
+                continue
+            i += 1
+        return repaired
+
     def _plan(self, user_scope_id: str, history: list[dict]) -> LoopDecision:
+        history[:] = self._repair_history(history)
         self._debug("plan_start")
         response = self.client.chat.completions.create(
             model=self.personalization["models"]["fsm"],
@@ -195,7 +245,8 @@ class AgentLoop:
                 if decision.kind == "need_approval":
                     approval_result = self._request_approval(msg, decision.approval_request or {})
                     history.append({"role": "system", "content": approval_result})
-                    state = "OBSERVING"
+                    pending_tool_calls = (decision.approval_request or {}).get("tool_calls", [])
+                    state = "EXECUTING"
                     continue
 
             if state == "EXECUTING":
@@ -212,6 +263,8 @@ class AgentLoop:
 
         if final_answer:
             history.append({"role": "assistant", "content": final_answer})
+
+        history[:] = self._repair_history(history)
 
         self.memory_manager.update_memory(user_input, final_answer, user_scope_id=user_scope_id)
         self.memory_manager.maybe_update_soul(user_scope_id=user_scope_id)

@@ -3,6 +3,7 @@ import os
 import queue
 import time
 import threading
+from uuid import uuid4
 
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import (
@@ -31,6 +32,10 @@ class FeishuEntry:
         self._recent_event_keys = {}
         self._dedup_lock = threading.Lock()
 
+        # user_scope + chat 维度的当前短期 conversation_id
+        self._active_conversations = {}
+        self._conversation_lock = threading.Lock()
+
         # 队列只负责串行处理消息：上一条完成后再处理下一条。
         self._message_queue = queue.Queue()
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
@@ -47,6 +52,27 @@ class FeishuEntry:
             event_handler=self.event_handler,
             log_level=lark.LogLevel.DEBUG,
         )
+
+    @staticmethod
+    def _new_conversation_id() -> str:
+        return f"conv-{uuid4().hex[:10]}"
+
+    def _conversation_key(self, user_scope_id: str, chat_id: str) -> str:
+        return f"{user_scope_id}:{chat_id}"
+
+    def _get_or_create_conversation_id(self, user_scope_id: str, chat_id: str) -> str:
+        key = self._conversation_key(user_scope_id, chat_id)
+        with self._conversation_lock:
+            if key not in self._active_conversations:
+                self._active_conversations[key] = self._new_conversation_id()
+            return self._active_conversations[key]
+
+    def _set_conversation_id(self, user_scope_id: str, chat_id: str, conversation_id: str) -> None:
+        if not conversation_id:
+            return
+        key = self._conversation_key(user_scope_id, chat_id)
+        with self._conversation_lock:
+            self._active_conversations[key] = conversation_id
 
     def send_reply(self, data: P2ImMessageReceiveV1, text: str) -> None:
         content = json.dumps({"text": text})
@@ -83,7 +109,9 @@ class FeishuEntry:
             raise RuntimeError(f"reply group failed: {resp.code}, {resp.msg}, {resp.get_log_id()}")
 
     def _on_message(self, data: P2ImMessageReceiveV1) -> None:
-        msg = normalize_feishu_event(data)
+        base_msg = normalize_feishu_event(data)
+        conversation_id = self._get_or_create_conversation_id(base_msg.user_scope_id, base_msg.chat_id)
+        msg = normalize_feishu_event(data, conversation_id=conversation_id)
         dedup_key = self._build_dedup_key(data, msg.message_id, msg.session_id, msg.text)
 
         if self._is_duplicate_event(dedup_key):
@@ -103,7 +131,12 @@ class FeishuEntry:
                 if task_type == "reply_text":
                     self.send_reply(data, content)
                 elif task_type == "handle_runtime":
-                    self.runtime.process_channel_message(self, data, content)
+                    result = self.runtime.process_channel_message(self, data, content)
+                    self._set_conversation_id(
+                        content.user_scope_id,
+                        content.chat_id,
+                        str((result or {}).get("conversation_id", "")),
+                    )
             except Exception as e:
                 print(f"[ERROR] worker handle message failed: {e}")
                 try:

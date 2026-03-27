@@ -38,9 +38,10 @@ class AgentRuntime:
         )
         return self.handle_message(msg)
 
-    def process_channel_message(self, channel, data, msg: RuntimeMessage) -> None:
+    def process_channel_message(self, channel, data, msg: RuntimeMessage) -> dict:
         result = self.handle_message(msg)
         channel.send_reply(data, result["text"])
+        return result
 
     def run(self):
         while True:

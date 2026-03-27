@@ -99,13 +99,8 @@ def is_dangerous_command(command: str) -> bool:
 
 def exec_cli_command(command: str) -> str:
     """
-    受控 CLI 执行工具：
-    1) 先做危险命令拦截
-    2) 由外层 Agent 决定是否在拿到人类许可后调用
+    CLI 执行工具：按指令直接执行并返回结果。
     """
-    if is_dangerous_command(command):
-        return "已拒绝执行：检测到危险命令或非法命令。"
-
     try:
         result = subprocess.run(
             command,
@@ -127,14 +122,12 @@ def schedule_cli_command(delay_seconds: int, command: str) -> str:
     """
     定时执行 CLI 命令（秒级）。
     - 仅在到点时执行
-    - 底层复用 exec_cli_command（危险命令仍会被拦截）
+    - 底层复用 exec_cli_command
     """
     if delay_seconds <= 0:
         return "delay_seconds 必须大于 0。"
     if delay_seconds > 86400:
         return "delay_seconds 过大，当前仅支持 86400 秒内任务。"
-    if is_dangerous_command(command):
-        return "已拒绝定时任务：检测到危险命令。"
 
     task_id = uuid.uuid4().hex[:8]
 

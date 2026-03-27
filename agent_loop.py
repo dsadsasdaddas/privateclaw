@@ -18,11 +18,12 @@ class LoopDecision:
 class AgentLoop:
     """Plan / Execute / Observe：planner 只决策，executor 只执行。"""
 
-    def __init__(self, client, memory_manager, deep_search_agent, fsm_agent, personalization: dict):
+    def __init__(self, client, memory_manager, deep_search_agent, tool_config, available_tools, personalization: dict):
         self.client = client
         self.memory_manager = memory_manager
         self.deep_search_agent = deep_search_agent
-        self.fsm_agent = fsm_agent
+        self.tool_config = tool_config
+        self.available_tools = available_tools
         self.personalization = personalization
         self.session_histories = {}
         self.session_conversations = {}
@@ -119,7 +120,7 @@ class AgentLoop:
                 {"role": "system", "content": self.memory_manager.build_system_context(user_scope_id=user_scope_id)},
                 *history,
             ],
-            tools=self.fsm_agent.tool_config,
+            tools=self.tool_config,
             stream=False,
         )
         message = response.choices[0].message
@@ -170,8 +171,8 @@ class AgentLoop:
             call_id = tool_call.get("id", f"tool-{idx}")
 
             result = f"error: tool '{func_name}' not found."
-            if func_name in self.fsm_agent.available_tools:
-                func = self.fsm_agent.available_tools.get(func_name)
+            if func_name in self.available_tools:
+                func = self.available_tools.get(func_name)
                 try:
                     json_args = json.loads(func_args_str)
                     result = func(**json_args)

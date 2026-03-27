@@ -35,7 +35,7 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 ├── agent_runtime.py      # Runtime orchestration / 运行时编排
 ├── channel_layer.py      # Channel payload normalization / 渠道消息清洗层
 ├── feishu_entry.py       # Feishu long-connection ingress / 飞书长连接入口
-├── state_thinking.py     # FSM agent loop / 状态机执行循环
+├── agent_loop.py         # Unified AgentLoop planning/execution loop / 统一思考执行循环
 ├── deepsearch.py         # Deep search workflow / 深度搜索流程
 ├── context_memory.py     # Memory manager / 记忆管理器
 ├── tools.py              # Tool implementations / 工具实现

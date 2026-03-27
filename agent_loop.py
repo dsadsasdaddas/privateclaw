@@ -245,7 +245,7 @@ class AgentLoop:
                     continue
                 if decision.kind == "need_approval":
                     approval_result = self._request_approval(msg, decision.approval_request or {})
-                    history.append({"role": "system", "content": approval_result})
+                    self._debug("approval", approval_result)
                     pending_tool_calls = (decision.approval_request or {}).get("tool_calls", [])
                     state = "EXECUTING"
                     continue

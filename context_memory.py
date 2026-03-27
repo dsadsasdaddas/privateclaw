@@ -19,10 +19,10 @@ ROUTER_MODEL = _load_model_router()
 
 
 @dataclass
-class MemoryContextManager:
-    client: object
+class MemoryStore:
+    """仅负责 identity/soul/memory 的存储和读取。"""
+
     root_dir: Path
-    max_recent_lines: int = 40
 
     def __post_init__(self):
         self.identity_md = self.root_dir / "identity.md"
@@ -46,19 +46,49 @@ class MemoryContextManager:
                 encoding="utf-8",
             )
 
-    def build_system_context(self) -> str:
-        identity = self._read_text(self.identity_md)
-        soul = self._read_text(self.soul_md)
-        memory = self._read_text(self.memory_md)
-        recent_preview = memory[-2800:] if len(memory) > 2800 else memory
-        return (
-            "请严格遵循以下长期上下文（Identity/Soul/Memory）：\n\n"
-            f"{identity}\n\n{soul}\n\n{recent_preview}"
-        )
+    def read_identity(self) -> str:
+        return self._read_text(self.identity_md)
+
+    def read_soul(self) -> str:
+        return self._read_text(self.soul_md)
+
+    def write_soul(self, soul_text: str) -> None:
+        self.soul_md.write_text(soul_text.strip() + "\n", encoding="utf-8")
+
+    def read_memory(self) -> str:
+        return self._read_text(self.memory_md)
+
+    def write_memory(self, memory_text: str) -> None:
+        self.memory_md.write_text(memory_text, encoding="utf-8")
+
+    @staticmethod
+    def parse_memory_sections(memory_text: str):
+        marker = "## Recent Interactions"
+        idx = memory_text.find(marker)
+        if idx == -1:
+            memory_text = "# Memory\n\n## Daily Summaries\n\n## Recent Interactions\n"
+            idx = memory_text.find(marker)
+        summary_part = memory_text[:idx].rstrip()
+        recent_part = memory_text[idx + len(marker) :].strip()
+        recent_lines = [line for line in recent_part.splitlines() if line.strip().startswith("-")]
+        return summary_part, recent_lines
+
+    @staticmethod
+    def _read_text(path: Path) -> str:
+        return path.read_text(encoding="utf-8").strip()
+
+
+@dataclass
+class MemoryRefiner:
+    """负责提取/整理对话为 memory，并把稳定偏好提炼到 soul。"""
+
+    client: object
+    store: MemoryStore
+    max_recent_lines: int = 40
 
     def update_memory(self, user_input: str, assistant_output: str) -> None:
-        memory_text = self._read_text(self.memory_md)
-        summary_part, recent_lines = self._parse_memory_sections(memory_text)
+        memory_text = self.store.read_memory()
+        summary_part, recent_lines = self.store.parse_memory_sections(memory_text)
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         safe_user = user_input.replace("\n", " ").strip()
@@ -82,15 +112,15 @@ class MemoryContextManager:
             + ("\n".join(recent_lines) if recent_lines else "")
             + "\n"
         )
-        self.memory_md.write_text(new_memory, encoding="utf-8")
+        self.store.write_memory(new_memory)
 
     def maybe_update_soul(self) -> None:
-        memory_text = self._read_text(self.memory_md)
-        _, recent_lines = self._parse_memory_sections(memory_text)
+        memory_text = self.store.read_memory()
+        _, recent_lines = self.store.parse_memory_sections(memory_text)
         if len(recent_lines) == 0 or len(recent_lines) % 8 != 0:
             return
 
-        soul_text = self._read_text(self.soul_md)
+        soul_text = self.store.read_soul()
         recent_context = "\n".join(recent_lines[-12:])
         try:
             response = self.client.chat.completions.create(
@@ -110,7 +140,7 @@ class MemoryContextManager:
             )
             updated = (response.choices[0].message.content or "").strip()
             if updated:
-                self.soul_md.write_text(updated + "\n", encoding="utf-8")
+                self.store.write_soul(updated)
         except Exception:
             pass
 
@@ -157,18 +187,52 @@ class MemoryContextManager:
             preview = " | ".join(lines[:3])
             return f"- 历史对话压缩（fallback）: {preview[:200]}"
 
-    @staticmethod
-    def _parse_memory_sections(memory_text: str):
-        marker = "## Recent Interactions"
-        idx = memory_text.find(marker)
-        if idx == -1:
-            memory_text = "# Memory\n\n## Daily Summaries\n\n## Recent Interactions\n"
-            idx = memory_text.find(marker)
-        summary_part = memory_text[:idx].rstrip()
-        recent_part = memory_text[idx + len(marker) :].strip()
-        recent_lines = [line for line in recent_part.splitlines() if line.strip().startswith("-")]
-        return summary_part, recent_lines
 
-    @staticmethod
-    def _read_text(path: Path) -> str:
-        return path.read_text(encoding="utf-8").strip()
+@dataclass
+class ContextAssembler:
+    """负责拼接模型需要的系统上下文。"""
+
+    store: MemoryStore
+
+    def build_system_context(self) -> str:
+        identity = self.store.read_identity()
+        soul = self.store.read_soul()
+        memory = self.store.read_memory()
+        recent_preview = memory[-2800:] if len(memory) > 2800 else memory
+        return (
+            "请严格遵循以下长期上下文（Identity/Soul/Memory）：\n\n"
+            f"{identity}\n\n{soul}\n\n{recent_preview}"
+        )
+
+
+@dataclass
+class MemoryContextManager:
+    """兼容旧接口的门面类，内部拆分为 Store / Refiner / ContextAssembler 三个职责。"""
+
+    client: object
+    root_dir: Path
+    max_recent_lines: int = 40
+
+    def __post_init__(self):
+        self.store = MemoryStore(root_dir=self.root_dir)
+        self.refiner = MemoryRefiner(
+            client=self.client,
+            store=self.store,
+            max_recent_lines=self.max_recent_lines,
+        )
+        self.assembler = ContextAssembler(store=self.store)
+
+    def ensure_md_files(self) -> None:
+        self.store.ensure_md_files()
+
+    def build_system_context(self) -> str:
+        return self.assembler.build_system_context()
+
+    def update_memory(self, user_input: str, assistant_output: str) -> None:
+        self.refiner.update_memory(user_input, assistant_output)
+
+    def maybe_update_soul(self) -> None:
+        self.refiner.maybe_update_soul()
+
+    def compact_history_if_needed(self, history_list: list, max_chars: int = 12000) -> list:
+        return self.refiner.compact_history_if_needed(history_list, max_chars=max_chars)

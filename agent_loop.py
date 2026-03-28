@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
+import time
 from uuid import uuid4
 from typing import Optional
 
@@ -194,12 +195,23 @@ class AgentLoop:
         return tool_results
 
     def run(self, msg: RuntimeMessage) -> dict:
+        run_id = f"run-{uuid4().hex[:8]}"
         session_id = msg.session_id
         user_input = (msg.text or "").strip()
         user_scope_id = (msg.user_scope_id or session_id).strip() or session_id
         conversation_id = self._resolve_conversation_id(session_id, msg.conversation_id)
+        queue_wait_ms = max(0, int(time.time() * 1000) - int(getattr(msg, "enqueue_ts_ms", 0) or 0))
+        llm_ms_total = 0
+        tool_ms_total = 0
+        memory_ms_total = 0
 
         if not user_input:
+            self._debug(
+                "run_metrics",
+                f"run_id={run_id} session_id={session_id} conversation_id={conversation_id} "
+                f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
+                f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
+            )
             return {
                 "session_id": session_id,
                 "conversation_id": conversation_id,
@@ -209,6 +221,12 @@ class AgentLoop:
 
         if user_input == "/reset":
             new_conversation_id = self._reset_conversation(session_id)
+            self._debug(
+                "run_metrics",
+                f"run_id={run_id} session_id={session_id} conversation_id={new_conversation_id} "
+                f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
+                f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
+            )
             return {
                 "session_id": session_id,
                 "conversation_id": new_conversation_id,
@@ -219,7 +237,15 @@ class AgentLoop:
         if self.personalization["deepsearch_trigger_keyword"] in user_input:
             query = user_input.replace(self.personalization["deepsearch_trigger_keyword"], "", 1).strip() or user_input
             result_text = self.deep_search_agent.run(query)
+            t_memory_start = time.perf_counter()
             self.memory_manager.update_memory(user_input, result_text, user_scope_id=user_scope_id)
+            memory_ms_total += int((time.perf_counter() - t_memory_start) * 1000)
+            self._debug(
+                "run_metrics",
+                f"run_id={run_id} session_id={session_id} conversation_id={conversation_id} "
+                f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
+                f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
+            )
             return {
                 "session_id": session_id,
                 "conversation_id": conversation_id,
@@ -235,7 +261,9 @@ class AgentLoop:
         final_answer = ""
         for _ in range(8):
             if state == "PLANNING":
+                t_llm_start = time.perf_counter()
                 decision = self._plan(user_scope_id=user_scope_id, history=history)
+                llm_ms_total += int((time.perf_counter() - t_llm_start) * 1000)
                 if decision.kind == "answer":
                     final_answer = decision.answer or ""
                     break
@@ -251,7 +279,9 @@ class AgentLoop:
                     continue
 
             if state == "EXECUTING":
+                t_tool_start = time.perf_counter()
                 tool_results = self._execute(pending_tool_calls)
+                tool_ms_total += int((time.perf_counter() - t_tool_start) * 1000)
                 history.extend(tool_results)
                 state = "OBSERVING"
                 continue
@@ -267,6 +297,7 @@ class AgentLoop:
 
         history[:] = self._repair_history(history)
 
+        t_memory_start = time.perf_counter()
         self.memory_manager.update_memory(user_input, final_answer, user_scope_id=user_scope_id)
         self.memory_manager.maybe_update_soul(user_scope_id=user_scope_id)
 
@@ -275,6 +306,7 @@ class AgentLoop:
             max_chars=256000,
             user_scope_id=user_scope_id,
         )
+        memory_ms_total += int((time.perf_counter() - t_memory_start) * 1000)
         if compacted_history is not history:
             new_conversation_id = self._new_conversation_id()
             self.session_conversations[session_id] = new_conversation_id
@@ -283,6 +315,13 @@ class AgentLoop:
             conversation_id = new_conversation_id
         else:
             self.session_histories[conversation_id] = compacted_history
+
+        self._debug(
+            "run_metrics",
+            f"run_id={run_id} session_id={session_id} conversation_id={conversation_id} "
+            f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
+            f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
+        )
 
         return {
             "session_id": session_id,

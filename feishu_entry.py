@@ -118,6 +118,9 @@ class FeishuEntry:
             print(f"[DEBUG] skip duplicated feishu event: {dedup_key}")
             return
 
+        msg.dedup_key = dedup_key
+        msg.enqueue_ts_ms = int(time.time() * 1000)
+
         if not msg.text:
             self._message_queue.put(("reply_text", data, "parse message failed, please send text message"))
             return
@@ -131,6 +134,14 @@ class FeishuEntry:
                 if task_type == "reply_text":
                     self.send_reply(data, content)
                 elif task_type == "handle_runtime":
+                    queue_wait_ms = max(0, int(time.time() * 1000) - int(getattr(content, "enqueue_ts_ms", 0) or 0))
+                    print(
+                        "[DEBUG] queue_metrics "
+                        f"session_id={content.session_id} "
+                        f"conversation_id={content.conversation_id} "
+                        f"queue_wait_ms={queue_wait_ms} "
+                        f"dedup_key={getattr(content, 'dedup_key', '')}"
+                    )
                     result = self.runtime.process_channel_message(self, data, content)
                     self._set_conversation_id(
                         content.user_scope_id,

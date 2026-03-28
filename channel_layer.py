@@ -12,6 +12,8 @@ class RuntimeMessage:
     message_id: str
     user_scope_id: str
     conversation_id: str = ""
+    dedup_key: str = ""
+    enqueue_ts_ms: int = 0
 
 
 def _safe_get_sender_open_id(data) -> str:

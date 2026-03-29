@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 from openai import OpenAI
 
-from tools import AVAILABLE_TOOLS
+from tools import build_available_tools
 from deepsearch import DeepSearch
 from context_memory import MemoryContextManager
 from agent_loop import AgentLoop
@@ -15,13 +15,12 @@ def load_personalization() -> dict:
         "api_key_env": "DASHSCOPE_API_KEY",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "models": {
-            "chat": "qwen3.5-plus",
-            "router": "qwen-turbo",
+            "chat": "qwen-max",
+            "router": "qwen-max",
             "fsm": "qwen-max",
-            "plan": "qwen-turbo",
-            "summary": "qwen-plus",
+            "plan": "qwen-max",
+            "summary": "qwen-max",
         },
-        "deepsearch_trigger_keyword": "深度搜索",
     }
     try:
         with open("personalization.yaml", "r", encoding="utf-8") as f:
@@ -31,9 +30,6 @@ def load_personalization() -> dict:
             models = raw.get("models", {})
             for key in defaults["models"]:
                 defaults["models"][key] = models.get(key, defaults["models"][key])
-            defaults["deepsearch_trigger_keyword"] = raw.get(
-                "deepsearch_trigger_keyword", defaults["deepsearch_trigger_keyword"]
-            )
     except Exception:
         pass
     return defaults
@@ -73,13 +69,13 @@ def main():
 
     tool_config = load_tool_config()
     deep_search_agent = DeepSearch(client)
+    available_tools = build_available_tools(deep_search_agent=deep_search_agent)
 
     agent_loop = AgentLoop(
         client=client,
         memory_manager=memory_manager,
-        deep_search_agent=deep_search_agent,
         tool_config=tool_config,
-        available_tools=AVAILABLE_TOOLS,
+        available_tools=available_tools,
         personalization=personalization,
     )
     runtime = AgentRuntime(agent_loop=agent_loop)

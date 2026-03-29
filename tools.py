@@ -192,11 +192,21 @@ def schedule_cli_command(delay_seconds: int, command: str) -> str:
 
 
 
-AVAILABLE_TOOLS = {
-    "get_system_time": get_system_time,
-    "web_search": search_web,
-    "execute_python_code": execute_python_code,
-    "create_new_skills": create_new_skills,
-    "exec_cli_command": exec_cli_command,
-    "schedule_cli_command": schedule_cli_command,
-} 
+def build_available_tools(deep_search_agent=None) -> dict:
+    def _deep_search(query: str) -> str:
+        if deep_search_agent is None:
+            return "deep_search 不可用：DeepSearch agent 尚未初始化。"
+        q = (query or "").strip()
+        if not q:
+            return "deep_search 参数 query 不能为空。"
+        return str(deep_search_agent.run(q))
+
+    return {
+        "get_system_time": get_system_time,
+        "web_search": search_web,
+        "deep_search": _deep_search,
+        "execute_python_code": execute_python_code,
+        "create_new_skills": create_new_skills,
+        "exec_cli_command": exec_cli_command,
+        "schedule_cli_command": schedule_cli_command,
+    }

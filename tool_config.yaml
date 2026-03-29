@@ -9,7 +9,7 @@
 - type: function
   function:
     name: web_search
-    description: 当你需要获取最新的新闻、实时信息或未知的知识时，调用此工具搜索互联网。
+    description: 当你需要“快速获取少量最新事实/链接”时使用；适合先做信息探测与候选来源收集，再决定是否进入 deep_search。
     parameters:
       type: object
       properties:
@@ -20,8 +20,20 @@
         - query
 - type: function
   function:
+    name: deep_search
+    description: 当问题复杂、需要多轮检索+页面阅读+反思总结时使用；它比 web_search 更慢但更全面，适合最终结论前的深挖。
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 需要深度搜索的问题或主题。
+      required:
+        - query
+- type: function
+  function:
     name: execute_python_code
-    description: A Python code interpreter. Use this to write and execute python code to solve math problems, process data, or perform logical tasks. Returns the standard output (stdout) or error traceback.
+    description: 当需要计算、数据处理、格式转换、脚本验证时使用；用于可重复的程序化推导，不用于高风险系统操作。
     parameters:
       type: object
       properties:
@@ -62,8 +74,8 @@
   function:
     name: exec_cli_command
     description: |
-      受控命令执行工具。Agent 在调用前必须先征求人类同意。
-      本工具内部会拒绝危险命令（如 rm、shutdown、mkfs 等）。
+      受控命令执行工具。用于读取环境信息、运行诊断命令、执行安全脚本。
+      本工具内部会拒绝危险命令（如 rm、shutdown、mkfs 等）；若出现权限/allowlist/审批类报错，不应盲目重试。
     parameters:
       type: object
       properties:
@@ -77,7 +89,7 @@
     name: schedule_cli_command
     description: |
       定时执行命令工具。适用于用户明确提出“几秒后/几分钟后执行某命令”的需求。
-      危险命令会被自动拒绝。
+      危险命令会被自动拒绝；若命令依赖前台节点或权限，请先确认条件满足再调度。
     parameters:
       type: object
       properties:

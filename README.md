@@ -8,7 +8,7 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 ## Features / 功能特性
 
 ### English
-- **Persistent Memory** via `identity.md`, `soul.md`, and `memory.md`.
+- **Persistent Memory** via `MEMORY.md` and daily logs in `memory/YYYY-MM-DD.md`.
 - **Automatic Context Compression** when history becomes large.
 - **Deep Search Workflow** with multi-round query planning, page reading, reflection, and summarization.
 - **Safe CLI Execution** through `exec_cli_command` with dangerous-command blocking and human confirmation.
@@ -17,7 +17,7 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 - **Heartbeat Runtime** while `main.py` is running.
 
 ### 中文
-- 通过 `identity.md`、`soul.md`、`memory.md` 实现**持久记忆**。
+- 通过 `MEMORY.md` 与 `memory/YYYY-MM-DD.md` 实现**持久记忆**。
 - 当上下文过长时自动执行**历史压缩**。
 - 提供**深度搜索流程**：多轮检索、页面读取、反思与总结。
 - 提供**安全命令执行**：`exec_cli_command` 可拦截危险命令并在执行前征求确认。
@@ -139,9 +139,8 @@ python main.py
 
 ## Memory Files / 记忆文件
 
-- `identity.md`: stable assistant identity constraints / 稳定身份约束。
-- `soul.md`: long-term style and preferences / 长期风格与偏好。
-- `memory.md`: daily summaries and recent interactions / 每日总结与近期交互。
+- `MEMORY.md`: stable preferences, rules, identity, and project conventions / 长期稳定偏好、规则、身份信息、项目约定。
+- `memory/YYYY-MM-DD.md`: what was done today, temporary decisions, and active troubleshooting items / 今天做了什么、临时决定、正在排查的问题。
 
 ---
 
@@ -151,5 +150,7 @@ python main.py
   请将密钥保存在环境变量中，不要硬编码到仓库。
 - This project is currently optimized for Feishu single-channel ingress.  
   当前项目主要面向飞书单通道消息接入场景。
-- Personalized options are configured in `personalization.yaml` (API key env name, base URL, model choices, deep-search trigger keyword).  
-  个性化选项通过 `personalization.yaml` 配置（API Key 环境变量名、Base URL、模型选择、深度搜索触发词）。
+- Personalized options are configured in `personalization.yaml` (API key env name, base URL, model choices).  
+  个性化选项通过 `personalization.yaml` 配置（API Key 环境变量名、Base URL、模型选择）。
+- See `TROUBLESHOOTING.md` for common non-retriable error signatures and stop conditions.  
+  常见不可重试错误签名与自动停止条件见 `TROUBLESHOOTING.md`。

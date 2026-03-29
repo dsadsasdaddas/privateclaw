@@ -19,10 +19,24 @@ class LoopDecision:
 class AgentLoop:
     """Plan / Execute / Observe：planner 只决策，executor 只执行。"""
 
-    def __init__(self, client, memory_manager, deep_search_agent, tool_config, available_tools, personalization: dict):
+    RUN_TIMEOUT_SECONDS = 60
+    MAX_STALL_STEPS = 8
+    MAX_SAME_TOOL_FAILURES = 3
+    NON_RETRIABLE_ERROR_SIGNATURES = (
+        "approval required",
+        "allowlist miss",
+        "permission denied",
+        "权限缺失",
+        "权限不足",
+        "forbidden",
+        "not authorized",
+        "节点不在前台",
+        "not in foreground",
+    )
+
+    def __init__(self, client, memory_manager, tool_config, available_tools, personalization: dict):
         self.client = client
         self.memory_manager = memory_manager
-        self.deep_search_agent = deep_search_agent
         self.tool_config = tool_config
         self.available_tools = available_tools
         self.personalization = personalization
@@ -116,7 +130,7 @@ class AgentLoop:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是 Planner。优先直接回答；需要工具时发起 tool_calls；危险工具先请求审批。",
+                    "content": "你是 Planner。优先直接回答；需要工具时发起 tool_calls；当问题需要多轮检索和网页阅读时优先调用 deep_search；危险工具先请求审批。",
                 },
                 {"role": "system", "content": self.memory_manager.build_system_context(user_scope_id=user_scope_id)},
                 *history,
@@ -163,13 +177,41 @@ class AgentLoop:
         tool_names = [c.get("name", "") for c in (approval_request or {}).get("tool_calls", [])]
         return f"审批结果：自动批准。tools={','.join(tool_names)}"
 
-    def _execute(self, tool_calls: list[dict]) -> list[dict]:
+    @staticmethod
+    def _tool_failure_signature(tool_name: str, args: str) -> str:
+        return f"{tool_name}::{args}"
+
+    @staticmethod
+    def _is_tool_failure(text: str) -> bool:
+        low = (text or "").lower()
+        markers = (
+            "error",
+            "failed",
+            "failure",
+            "exception",
+            "命令执行失败",
+            "命令执行异常",
+            "json decode error",
+            "not found",
+        )
+        return any(m in low for m in markers)
+
+    def _match_non_retriable_signature(self, text: str) -> str:
+        low = (text or "").lower()
+        for sig in self.NON_RETRIABLE_ERROR_SIGNATURES:
+            if sig in low:
+                return sig
+        return ""
+
+    def _execute(self, tool_calls: list[dict], failure_counts: dict[str, int]) -> tuple[list[dict], str]:
         self._debug("execute_start", f"count={len(tool_calls)}")
         tool_results = []
+        hard_stop_reason = ""
         for idx, tool_call in enumerate(tool_calls, start=1):
             func_name = tool_call.get("name", "")
             func_args_str = tool_call.get("arguments", "{}")
             call_id = tool_call.get("id", f"tool-{idx}")
+            sig = self._tool_failure_signature(func_name, func_args_str)
 
             result = f"error: tool '{func_name}' not found."
             if func_name in self.available_tools:
@@ -182,17 +224,38 @@ class AgentLoop:
                 except Exception as e:
                     result = f"Error executing tool '{func_name}': {str(e)}"
 
+            result_text = str(result)
+            non_retry_sig = self._match_non_retriable_signature(result_text)
+            if non_retry_sig:
+                hard_stop_reason = (
+                    f"检测到不可重试错误签名: `{non_retry_sig}`。"
+                    f"工具 `{func_name}` 返回：{result_text}"
+                )
+
+            if self._is_tool_failure(result_text):
+                failure_counts[sig] = failure_counts.get(sig, 0) + 1
+                if failure_counts[sig] >= self.MAX_SAME_TOOL_FAILURES and not hard_stop_reason:
+                    hard_stop_reason = (
+                        f"同一工具与参数连续失败已达 {self.MAX_SAME_TOOL_FAILURES} 次，"
+                        f"停止重试。工具=`{func_name}` 参数=`{func_args_str}` 最近报错：{result_text}"
+                    )
+            else:
+                failure_counts[sig] = 0
+
             tool_results.append(
                 {
                     "role": "tool",
-                    "content": str(result),
+                    "content": result_text,
                     "tool_call_id": call_id,
                     "name": func_name,
                 }
             )
 
+            if hard_stop_reason:
+                break
+
         self._debug("execute_end")
-        return tool_results
+        return tool_results, hard_stop_reason
 
     def run(self, msg: RuntimeMessage) -> dict:
         run_id = f"run-{uuid4().hex[:8]}"
@@ -234,32 +297,31 @@ class AgentLoop:
                 "text": f"会话已重置，新短期会话ID: {new_conversation_id}",
             }
 
-        if self.personalization["deepsearch_trigger_keyword"] in user_input:
-            query = user_input.replace(self.personalization["deepsearch_trigger_keyword"], "", 1).strip() or user_input
-            result_text = self.deep_search_agent.run(query)
-            t_memory_start = time.perf_counter()
-            self.memory_manager.update_memory(user_input, result_text, user_scope_id=user_scope_id)
-            memory_ms_total += int((time.perf_counter() - t_memory_start) * 1000)
-            self._debug(
-                "run_metrics",
-                f"run_id={run_id} session_id={session_id} conversation_id={conversation_id} "
-                f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
-                f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
-            )
-            return {
-                "session_id": session_id,
-                "conversation_id": conversation_id,
-                "user_scope_id": user_scope_id,
-                "text": result_text,
-            }
-
         history = self._get_or_create_history(conversation_id)
         history.append({"role": "user", "content": user_input})
 
         state = "PLANNING"
         pending_tool_calls = []
         final_answer = ""
-        for _ in range(8):
+        loop_start = time.perf_counter()
+        failure_counts: dict[str, int] = {}
+        last_snapshot = ""
+        stall_steps = 0
+        for _ in range(64):
+            if (time.perf_counter() - loop_start) > self.RUN_TIMEOUT_SECONDS:
+                final_answer = "本轮处理超过 60 秒已强制结束，请你根据当前报错继续排障，我已把控制权交还给你。"
+                break
+
+            snapshot = f"{state}|{len(history)}|{len(pending_tool_calls)}|{final_answer}"
+            if snapshot == last_snapshot:
+                stall_steps += 1
+            else:
+                stall_steps = 0
+                last_snapshot = snapshot
+            if stall_steps >= self.MAX_STALL_STEPS:
+                final_answer = "连续 8 步无状态变化，已终止本轮处理。请提供更具体输入或调整权限/参数后重试。"
+                break
+
             if state == "PLANNING":
                 t_llm_start = time.perf_counter()
                 decision = self._plan(user_scope_id=user_scope_id, history=history)
@@ -280,9 +342,16 @@ class AgentLoop:
 
             if state == "EXECUTING":
                 t_tool_start = time.perf_counter()
-                tool_results = self._execute(pending_tool_calls)
+                tool_results, hard_stop_reason = self._execute(pending_tool_calls, failure_counts=failure_counts)
                 tool_ms_total += int((time.perf_counter() - t_tool_start) * 1000)
                 history.extend(tool_results)
+                if hard_stop_reason:
+                    final_answer = (
+                        "工具执行已停止，原因如下：\n"
+                        f"{hard_stop_reason}\n\n"
+                        "这类错误通常不应继续自动重试，请你确认权限、allowlist、审批状态或前台节点状态后再继续。"
+                    )
+                    break
                 state = "OBSERVING"
                 continue
 

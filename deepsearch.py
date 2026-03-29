@@ -9,7 +9,7 @@ import yaml
 
 
 def _load_models() -> dict:
-    defaults = {"plan": "qwen-turbo", "router": "qwen-turbo", "summary": "qwen-plus"}
+    defaults = {"plan": "qwen-max", "router": "qwen-max", "summary": "qwen-max"}
     try:
         with open("personalization.yaml", "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}

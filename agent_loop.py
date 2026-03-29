@@ -19,10 +19,9 @@ class LoopDecision:
 class AgentLoop:
     """Plan / Execute / Observe：planner 只决策，executor 只执行。"""
 
-    def __init__(self, client, memory_manager, deep_search_agent, tool_config, available_tools, personalization: dict):
+    def __init__(self, client, memory_manager, tool_config, available_tools, personalization: dict):
         self.client = client
         self.memory_manager = memory_manager
-        self.deep_search_agent = deep_search_agent
         self.tool_config = tool_config
         self.available_tools = available_tools
         self.personalization = personalization
@@ -116,7 +115,7 @@ class AgentLoop:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是 Planner。优先直接回答；需要工具时发起 tool_calls；危险工具先请求审批。",
+                    "content": "你是 Planner。优先直接回答；需要工具时发起 tool_calls；当问题需要多轮检索和网页阅读时优先调用 deep_search；危险工具先请求审批。",
                 },
                 {"role": "system", "content": self.memory_manager.build_system_context(user_scope_id=user_scope_id)},
                 *history,
@@ -232,25 +231,6 @@ class AgentLoop:
                 "conversation_id": new_conversation_id,
                 "user_scope_id": user_scope_id,
                 "text": f"会话已重置，新短期会话ID: {new_conversation_id}",
-            }
-
-        if self.personalization["deepsearch_trigger_keyword"] in user_input:
-            query = user_input.replace(self.personalization["deepsearch_trigger_keyword"], "", 1).strip() or user_input
-            result_text = self.deep_search_agent.run(query)
-            t_memory_start = time.perf_counter()
-            self.memory_manager.update_memory(user_input, result_text, user_scope_id=user_scope_id)
-            memory_ms_total += int((time.perf_counter() - t_memory_start) * 1000)
-            self._debug(
-                "run_metrics",
-                f"run_id={run_id} session_id={session_id} conversation_id={conversation_id} "
-                f"queue_wait_ms={queue_wait_ms} llm_ms={llm_ms_total} tool_ms={tool_ms_total} "
-                f"memory_ms={memory_ms_total} dedup_key={getattr(msg, 'dedup_key', '')}",
-            )
-            return {
-                "session_id": session_id,
-                "conversation_id": conversation_id,
-                "user_scope_id": user_scope_id,
-                "text": result_text,
             }
 
         history = self._get_or_create_history(conversation_id)

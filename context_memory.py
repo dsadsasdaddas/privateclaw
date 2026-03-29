@@ -11,9 +11,9 @@ def _load_model_router() -> str:
     try:
         with open("personalization.yaml", "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
-            return (raw.get("models", {}) or {}).get("router", "qwen-turbo")
+            return (raw.get("models", {}) or {}).get("router", "qwen-max")
     except Exception:
-        return "qwen-turbo"
+        return "qwen-max"
 
 
 ROUTER_MODEL = _load_model_router()

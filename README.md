@@ -111,6 +111,60 @@ python main.py
 
 ---
 
+## Debug & Testing / 调试与测试
+
+### English
+- **Syntax check all core Python files**:
+
+```bash
+python -m py_compile main.py agent_runtime.py agent_loop.py deepsearch.py context_memory.py tools.py feishu_entry.py channel_layer.py
+```
+
+- **Run in local CLI mode for smoke testing**:
+
+```bash
+MESSAGE_ENTRY=cli python main.py
+```
+
+- **Verify key runtime config files are readable**:
+
+```bash
+python - <<'PY'
+import yaml
+for p in ["tool_config.yaml", "dynamic_config.yaml", "personalization.yaml"]:
+    with open(p, "r", encoding="utf-8") as f:
+        yaml.safe_load(f)
+print("yaml ok")
+PY
+```
+
+### 中文
+- **核心 Python 文件语法检查**：
+
+```bash
+python -m py_compile main.py agent_runtime.py agent_loop.py deepsearch.py context_memory.py tools.py feishu_entry.py channel_layer.py
+```
+
+- **本地 CLI 模式冒烟测试**：
+
+```bash
+MESSAGE_ENTRY=cli python main.py
+```
+
+- **关键运行配置可读性校验**：
+
+```bash
+python - <<'PY'
+import yaml
+for p in ["tool_config.yaml", "dynamic_config.yaml", "personalization.yaml"]:
+    with open(p, "r", encoding="utf-8") as f:
+        yaml.safe_load(f)
+print("yaml ok")
+PY
+```
+
+---
+
 ## Tool: `exec_cli_command` / 命令执行工具
 
 ### English

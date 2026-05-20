@@ -105,3 +105,58 @@
       required:
         - delay_seconds
         - command
+- type: function
+  function:
+    name: read_url
+    description: Read a single HTTP(S) URL and return extracted text. Intended for researcher subagents.
+    parameters:
+      type: object
+      properties:
+        url:
+          type: string
+          description: HTTP(S) URL to read.
+      required:
+        - url
+- type: function
+  function:
+    name: read_file
+    description: Read a workspace file path allowed by the current execution context. Intended for coder subagents.
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Workspace-relative file path to read.
+      required:
+        - path
+- type: function
+  function:
+    name: write_file
+    description: Write a workspace file path allowed by the current execution context. Intended for coder subagents.
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Workspace-relative file path to write.
+        content:
+          type: string
+          description: Full file content to write.
+      required:
+        - path
+        - content
+- type: function
+  function:
+    name: list_files
+    description: List files under an allowed workspace directory. Intended for coder subagents.
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Workspace-relative directory path to list.
+        max_depth:
+          type: integer
+          description: Maximum recursion depth.
+      required:
+        - path

@@ -285,12 +285,28 @@ export class AgentLoop {
     return { toolResults, hardStopReason };
   }
 
+  async runSubagentTask(task: string, ctx: ExecutionContext): Promise<string> {
+    if (ctx.depth > 3) {
+      return `subagent refused: max depth exceeded. depth=${ctx.depth}`;
+    }
+    const result = await this.runWithContext({
+      userInput: task,
+      sessionId: `${ctx.conversationId}:${ctx.agentId}`,
+      ctx,
+      queueWaitMs: 0,
+      dedupKey: "",
+      persistMemory: false,
+      allowResetCommand: false,
+    });
+    return result.text;
+  }
+
   async run(msg: RuntimeMessage): Promise<RuntimeResult> {
     const runId = shortId("run", 8);
     const sessionId = msg.session_id;
     const userInput = (msg.text ?? "").trim();
     const userScopeId = (msg.user_scope_id || sessionId).trim() || sessionId;
-    let conversationId = this.resolveConversationId(sessionId, msg.conversation_id ?? "");
+    const conversationId = this.resolveConversationId(sessionId, msg.conversation_id ?? "");
     const ctx = createRootExecutionContext({
       profile: this.rootProfile,
       conversationId,
@@ -298,6 +314,32 @@ export class AgentLoop {
       taskId: runId,
     });
     const queueWaitMs = msg.enqueue_ts_ms ? Math.max(0, Date.now() - msg.enqueue_ts_ms) : 0;
+    return this.runWithContext({
+      userInput,
+      sessionId,
+      ctx,
+      queueWaitMs,
+      dedupKey: msg.dedup_key ?? "",
+      persistMemory: true,
+      allowResetCommand: true,
+    });
+  }
+
+  private async runWithContext(args: {
+    userInput: string;
+    sessionId: string;
+    ctx: ExecutionContext;
+    queueWaitMs: number;
+    dedupKey: string;
+    persistMemory: boolean;
+    allowResetCommand: boolean;
+  }): Promise<RuntimeResult> {
+    const runId = args.ctx.taskId;
+    const sessionId = args.sessionId;
+    const userInput = args.userInput.trim();
+    const userScopeId = args.ctx.userScopeId;
+    let conversationId = args.ctx.conversationId;
+    const queueWaitMs = args.queueWaitMs;
     let llmMsTotal = 0;
     let toolMsTotal = 0;
     let memoryMsTotal = 0;
@@ -305,16 +347,16 @@ export class AgentLoop {
     if (!userInput) {
       this.debug(
         "run_metrics",
-        `run_id=${runId} session_id=${sessionId} conversation_id=${conversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${msg.dedup_key ?? ""}`,
+        `run_id=${runId} agent_id=${args.ctx.agentId} role=${args.ctx.profile.role} session_id=${sessionId} conversation_id=${conversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${args.dedupKey}`,
       );
       return { session_id: sessionId, conversation_id: conversationId, user_scope_id: userScopeId, text: "Empty input." };
     }
 
-    if (userInput === "/reset") {
+    if (args.allowResetCommand && userInput === "/reset") {
       const newConversationId = this.resetConversation(sessionId);
       this.debug(
         "run_metrics",
-        `run_id=${runId} session_id=${sessionId} conversation_id=${newConversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${msg.dedup_key ?? ""}`,
+        `run_id=${runId} agent_id=${args.ctx.agentId} role=${args.ctx.profile.role} session_id=${sessionId} conversation_id=${newConversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${args.dedupKey}`,
       );
       return {
         session_id: sessionId,
@@ -324,7 +366,8 @@ export class AgentLoop {
       };
     }
 
-    const history = this.getOrCreateHistory(conversationId);
+    const historyKey = args.persistMemory ? conversationId : `${conversationId}:${args.ctx.taskId}:${args.ctx.agentId}`;
+    const history = this.getOrCreateHistory(historyKey);
     history.push({ role: "user", content: userInput });
 
     let state: "PLANNING" | "EXECUTING" | "OBSERVING" = "PLANNING";
@@ -355,7 +398,7 @@ export class AgentLoop {
 
       if (state === "PLANNING") {
         const llmStart = performance.now();
-        const decision = await this.plan(ctx, history);
+        const decision = await this.plan(args.ctx, history);
         llmMsTotal += Math.floor(performance.now() - llmStart);
         if (decision.kind === "answer") {
           finalAnswer = decision.answer ?? "";
@@ -367,7 +410,19 @@ export class AgentLoop {
           continue;
         }
         if (decision.kind === "need_approval") {
-          const approvalResult = this.requestApproval(msg, decision.approval_request);
+          const approvalResult = this.requestApproval(
+            {
+              session_id: sessionId,
+              text: userInput,
+              source: args.persistMemory ? "runtime" : "subagent",
+              chat_type: "internal",
+              chat_id: sessionId,
+              message_id: "",
+              user_scope_id: userScopeId,
+              conversation_id: conversationId,
+            },
+            decision.approval_request,
+          );
           this.debug("approval", approvalResult);
           pendingToolCalls = decision.approval_request?.tool_calls ?? [];
           state = "EXECUTING";
@@ -377,7 +432,7 @@ export class AgentLoop {
 
       if (state === "EXECUTING") {
         const toolStart = performance.now();
-        const { toolResults, hardStopReason } = await this.execute(ctx, pendingToolCalls, failureCounts);
+        const { toolResults, hardStopReason } = await this.execute(args.ctx, pendingToolCalls, failureCounts);
         toolMsTotal += Math.floor(performance.now() - toolStart);
         history.push(...toolResults);
         if (hardStopReason) {
@@ -402,25 +457,29 @@ export class AgentLoop {
     }
     history.splice(0, history.length, ...this.repairHistory(history));
 
-    const memoryStart = performance.now();
-    await this.memoryManager.updateMemory(userInput, finalAnswer, userScopeId);
-    await this.memoryManager.maybeUpdateSoul(userScopeId);
-    const compactedHistory = await this.memoryManager.compactHistoryIfNeeded(history, 256_000, userScopeId);
-    memoryMsTotal += Math.floor(performance.now() - memoryStart);
+    if (args.persistMemory) {
+      const memoryStart = performance.now();
+      await this.memoryManager.updateMemory(userInput, finalAnswer, userScopeId);
+      await this.memoryManager.maybeUpdateSoul(userScopeId);
+      const compactedHistory = await this.memoryManager.compactHistoryIfNeeded(history, 256_000, userScopeId);
+      memoryMsTotal += Math.floor(performance.now() - memoryStart);
 
-    if (compactedHistory !== history) {
-      const newConversationId = this.newConversationId();
-      this.sessionConversations.set(sessionId, newConversationId);
-      this.sessionHistories.set(newConversationId, compactedHistory);
-      this.sessionHistories.delete(conversationId);
-      conversationId = newConversationId;
+      if (compactedHistory !== history) {
+        const newConversationId = this.newConversationId();
+        this.sessionConversations.set(sessionId, newConversationId);
+        this.sessionHistories.set(newConversationId, compactedHistory);
+        this.sessionHistories.delete(conversationId);
+        conversationId = newConversationId;
+      } else {
+        this.sessionHistories.set(conversationId, compactedHistory);
+      }
     } else {
-      this.sessionHistories.set(conversationId, compactedHistory);
+      this.sessionHistories.set(historyKey, history);
     }
 
     this.debug(
       "run_metrics",
-      `run_id=${runId} session_id=${sessionId} conversation_id=${conversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${msg.dedup_key ?? ""}`,
+      `run_id=${runId} agent_id=${args.ctx.agentId} role=${args.ctx.profile.role} session_id=${sessionId} conversation_id=${conversationId} queue_wait_ms=${queueWaitMs} llm_ms=${llmMsTotal} tool_ms=${toolMsTotal} memory_ms=${memoryMsTotal} dedup_key=${args.dedupKey}`,
     );
 
     return {

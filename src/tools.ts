@@ -67,7 +67,7 @@ export async function searchWeb(query: string, maxResults = 5): Promise<SearchRe
   try {
     const response = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
       headers: {
-        "user-agent": "Mozilla/5.0 AIGC-CLI/0.1 (+https://duckduckgo.com)",
+        "user-agent": "Mozilla/5.0 NetAgent-CLI/0.1 (+https://duckduckgo.com)",
       },
       signal: controller.signal,
     });
@@ -122,7 +122,7 @@ export async function readUrl(url: string): Promise<string> {
   try {
     const response = await fetch(target, {
       headers: {
-        "user-agent": "Mozilla/5.0 AIGC-CLI/0.1",
+        "user-agent": "Mozilla/5.0 NetAgent-CLI/0.1",
       },
       signal: controller.signal,
     });

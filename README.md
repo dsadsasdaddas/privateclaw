@@ -1,10 +1,10 @@
 # AIGC-CLI
 
-A local AI assistant with persistent memory, deep search, controlled command execution, and Feishu message ingress.  
-一个支持长期记忆、深度搜索、受控命令执行与飞书消息入口的 AI 助手。
+AIGC-CLI is a TypeScript-based local AI assistant runtime with persistent memory, tool calling, deep search, controlled command execution, and Feishu message ingress.  
+AIGC-CLI 是一个 TypeScript 本地 AI 助手运行时，支持长期记忆、工具调用、深度搜索、受控命令执行与飞书消息入口。
 
-> Runtime has been refactored to TypeScript under `src/`.  
-> 运行时已重构为 TypeScript，主实现位于 `src/`。
+> Formerly PrivateClaw. The runtime has been refactored to TypeScript under `src/`.  
+> 原项目名 PrivateClaw；当前运行时已重构为 TypeScript，主实现位于 `src/`。
 
 ---
 
@@ -18,6 +18,7 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 - **Scheduled Execution** through `schedule_cli_command` (run command after a delay).
 - **Feishu Single-Channel Ingress** via long connection in `src/main.ts`.
 - **TypeScript Runtime** with strict type checking and build output in `dist/`.
+- **Capability Foundation** for future subagents: profiles, execution context, broker, audit log, and tool registry.
 
 ### 中文
 - 通过按用户范围隔离的 `MEMORY.md` 与 `memory/YYYY-MM-DD.md` 实现**持久记忆**。
@@ -27,6 +28,38 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 - 提供**定时执行能力**：`schedule_cli_command` 可在延迟后执行命令。
 - 提供**飞书单通道接入**（长连接消息入口）。
 - 使用 **TypeScript 严格类型检查**，构建产物输出到 `dist/`。
+- 提供面向未来 subagent 的**权限地基**：profile、execution context、broker、audit log 与工具注册表。
+
+---
+
+## Runtime Design / 运行时设计
+
+```mermaid
+flowchart TD
+  A["src/main.ts"] --> B["Config YAML"]
+  A --> C["OpenAI Client"]
+  A --> D["MemoryContextManager"]
+  A --> E["ToolRegistry"]
+  E --> F["CapabilityBroker"]
+  F --> G["AgentLoop"]
+  D --> G
+  C --> G
+  G --> H["AgentRuntime"]
+  H --> I["CLI"]
+  H --> J["FeishuEntry"]
+```
+
+The current runtime keeps backward-compatible assistant behavior while routing tool visibility and execution through `CapabilityBroker`. This prepares the project for a reusable subagent model:
+
+```text
+SubAgent = same AgentLoop/Kernel + AgentProfile + narrowed ExecutionContext
+```
+
+当前运行时保持兼容助手行为，但工具可见性和工具执行已经统一经过 `CapabilityBroker`，为后续可复用 subagent 模型做准备：
+
+```text
+SubAgent = 同一套 AgentLoop/Kernel + AgentProfile + 收窄后的 ExecutionContext
+```
 
 ---
 
@@ -42,6 +75,9 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 │   ├── channel-layer.ts      # Channel payload normalization / 渠道消息清洗层
 │   ├── feishu-entry.ts       # Feishu long-connection ingress / 飞书长连接入口
 │   ├── agent-loop.ts         # Unified AgentLoop planning/execution loop / 统一思考执行循环
+│   ├── capabilities.ts       # Permission broker and execution context / 权限网关与执行上下文
+│   ├── profiles.ts           # Agent profiles / Agent 权限画像
+│   ├── tool-registry.ts      # Tool specs and capability mapping / 工具注册与权限映射
 │   ├── deepsearch.ts         # Deep search workflow / 深度搜索流程
 │   ├── context-memory.ts     # Memory manager / 记忆管理器
 │   ├── tools.ts              # Tool implementations / 工具实现

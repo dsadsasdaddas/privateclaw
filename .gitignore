@@ -24,3 +24,4 @@ build/
 target/
 *.log
 *.tmp
+memory_scopes/

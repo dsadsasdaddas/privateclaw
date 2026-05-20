@@ -1,14 +1,19 @@
-# 项目依赖与运行说明
+# 项目依赖与运行说明（TypeScript 版）
 
-## 1) Python 版本
-- 推荐：Python **3.10+**
+## 1) Node.js 版本
+- 推荐：Node.js **20+**
 
 ## 2) 安装依赖
 在项目根目录执行：
 
 ```bash
-pip install openai pyyaml ddgs langgraph playwright lark-oapi
-python -m playwright install chromium
+npm install
+```
+
+如需使用 DeepSearch 的网页读取能力，并且当前环境尚未安装 Playwright 浏览器：
+
+```bash
+npx playwright install chromium
 ```
 
 ## 3) 安全填写 API Key（不要写进代码）
@@ -17,28 +22,35 @@ python -m playwright install chromium
 ### Linux / macOS
 ```bash
 export DASHSCOPE_API_KEY="你的DashScopeKey"
-python main.py
+npm run dev
 ```
 
 ### Windows PowerShell
 ```powershell
 $env:DASHSCOPE_API_KEY="你的DashScopeKey"
-python main.py
+npm run dev
 ```
 
-> 注意：不要把 key 直接写在 `main.py` 里，也不要提交到 git。
+> 注意：不要把 key 直接写在源码里，也不要提交到 git。
 
 ## 4) 运行（默认飞书单通道）
 ```bash
-python main.py
+npm run dev
+```
+
+生产构建：
+
+```bash
+npm run build
+npm start
 ```
 
 ## 5) 功能触发
-- 输入包含 **“深度搜索”** 的内容时，会走 DeepSearch 多轮搜索流程。
-- 其他输入统一走 `agent_loop.py` 的单一思考执行循环（Plan / Execute / Observe），不再区分程序路由分支。
+- 复杂检索问题会优先由模型调用 `deep_search` 工具，执行多轮搜索、页面读取和反思总结。
+- 其他输入统一走 `src/agent-loop.ts` 的单一思考执行循环（Plan / Execute / Observe）。
 
 ## 6) 飞书长连接配置（单通道入口）
-`main.py` 内置飞书长连接入口，需要以下环境变量：
+需要以下环境变量：
 
 ```bash
 export LARK_APP_ID="你的飞书AppID"
@@ -48,11 +60,11 @@ export LARK_APP_SECRET="你的飞书AppSecret"
 如需临时切回本地 CLI：
 
 ```bash
-MESSAGE_ENTRY=cli python main.py
+MESSAGE_ENTRY=cli npm run dev
 ```
 
 ## 7) 个性化配置（YAML）
-使用 `personalization.yaml` 进行个性化配置（仅保留必要项）：
+使用 `personalization.yaml` 进行个性化配置：
 
 - `api_key_env`
 - `base_url`
@@ -61,4 +73,10 @@ MESSAGE_ENTRY=cli python main.py
 - `models.fsm`
 - `models.plan`
 - `models.summary`
-- `deepsearch_trigger_keyword`
+- `deepsearch_trigger_keyword`（可选）
+
+## 8) 校验
+```bash
+npm run typecheck
+npm run build
+```

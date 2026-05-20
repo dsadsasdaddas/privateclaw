@@ -45,16 +45,19 @@
 - type: function
   function:
     name: create_new_skills
-    description: 当你需要长期拥有一个新能力时，调用此工具编写并保存永久的新技能。你需要提供完整的Python实现代码和匹配的YAML配置。
+    description: 当你需要长期拥有一个新能力时，调用此工具编写并保存永久的新技能。TypeScript 运行时优先提供完整的 TypeScript 实现代码和匹配的 YAML 配置；也兼容旧的 python_code。
     parameters:
       type: object
       properties:
         skill_name:
           type: string
           description: 新技能的纯英文函数名，例如 calculate_tax。
+        typescript_code:
+          type: string
+          description: 完整的 TypeScript 函数代码。
         python_code:
           type: string
-          description: 完整的Python函数代码。
+          description: 旧版兼容字段：完整的 Python 函数代码；仅当无法提供 typescript_code 时使用。
         yaml_config:
           type: string
           description: |
@@ -68,7 +71,7 @@
                   properties: {}
       required:
         - skill_name
-        - python_code
+        - typescript_code
         - yaml_config
 - type: function
   function:

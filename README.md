@@ -1,29 +1,32 @@
-# PrivateClaw / 私爪助手
+# AIGC-CLI
 
 A local AI assistant with persistent memory, deep search, controlled command execution, and Feishu message ingress.  
 一个支持长期记忆、深度搜索、受控命令执行与飞书消息入口的 AI 助手。
+
+> Runtime has been refactored to TypeScript under `src/`.  
+> 运行时已重构为 TypeScript，主实现位于 `src/`。
 
 ---
 
 ## Features / 功能特性
 
 ### English
-- **Persistent Memory** via `MEMORY.md` and daily logs in `memory/YYYY-MM-DD.md`.
+- **Persistent Memory** via scoped `MEMORY.md` and daily logs in `memory/YYYY-MM-DD.md`.
 - **Automatic Context Compression** when history becomes large.
 - **Deep Search Workflow** with multi-round query planning, page reading, reflection, and summarization.
-- **Safe CLI Execution** through `exec_cli_command` with dangerous-command blocking and human confirmation.
+- **Controlled CLI Execution** through `exec_cli_command` with dangerous-command blocking.
 - **Scheduled Execution** through `schedule_cli_command` (run command after a delay).
-- **Feishu Single-Channel Ingress** via long connection in `main.py`.
-- **Heartbeat Runtime** while `main.py` is running.
+- **Feishu Single-Channel Ingress** via long connection in `src/main.ts`.
+- **TypeScript Runtime** with strict type checking and build output in `dist/`.
 
 ### 中文
-- 通过 `MEMORY.md` 与 `memory/YYYY-MM-DD.md` 实现**持久记忆**。
+- 通过按用户范围隔离的 `MEMORY.md` 与 `memory/YYYY-MM-DD.md` 实现**持久记忆**。
 - 当上下文过长时自动执行**历史压缩**。
 - 提供**深度搜索流程**：多轮检索、页面读取、反思与总结。
-- 提供**安全命令执行**：`exec_cli_command` 可拦截危险命令并在执行前征求确认。
+- 提供**受控命令执行**：`exec_cli_command` 会拦截危险命令。
 - 提供**定时执行能力**：`schedule_cli_command` 可在延迟后执行命令。
 - 提供**飞书单通道接入**（长连接消息入口）。
-- `main.py` 运行期间有**心跳输出**。
+- 使用 **TypeScript 严格类型检查**，构建产物输出到 `dist/`。
 
 ---
 
@@ -31,18 +34,23 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 
 ```text
 .
-├── main.py               # Main entry (Feishu by default) / 主入口（默认飞书）
-├── agent_runtime.py      # Runtime orchestration / 运行时编排
-├── channel_layer.py      # Channel payload normalization / 渠道消息清洗层
-├── feishu_entry.py       # Feishu long-connection ingress / 飞书长连接入口
-├── agent_loop.py         # Unified AgentLoop planning/execution loop / 统一思考执行循环
-├── deepsearch.py         # Deep search workflow / 深度搜索流程
-├── context_memory.py     # Memory manager / 记忆管理器
-├── tools.py              # Tool implementations / 工具实现
-├── tool_config.yaml      # Tool schemas / 工具声明
-├── dynamic_config.yaml   # Dynamic tool configs / 动态工具配置
-├── skills/               # Skill scripts / 技能脚本
-├── requirement.md        # Setup notes / 安装说明
+├── package.json              # Node.js scripts and dependencies / Node 脚本与依赖
+├── tsconfig.json             # TypeScript compiler config / TS 编译配置
+├── src/
+│   ├── main.ts               # Main entry (Feishu by default) / 主入口（默认飞书）
+│   ├── agent-runtime.ts      # Runtime orchestration / 运行时编排
+│   ├── channel-layer.ts      # Channel payload normalization / 渠道消息清洗层
+│   ├── feishu-entry.ts       # Feishu long-connection ingress / 飞书长连接入口
+│   ├── agent-loop.ts         # Unified AgentLoop planning/execution loop / 统一思考执行循环
+│   ├── deepsearch.ts         # Deep search workflow / 深度搜索流程
+│   ├── context-memory.ts     # Memory manager / 记忆管理器
+│   ├── tools.ts              # Tool implementations / 工具实现
+│   ├── config.ts             # YAML config loading / 配置读取
+│   └── skills/               # Skill scripts / 技能脚本
+├── tool_config.yaml          # Tool schemas / 工具声明
+├── dynamic_config.yaml       # Dynamic tool configs / 动态工具配置
+├── personalization.yaml      # Model/API personalization / 个性化配置
+├── requirement.md            # Setup notes / 安装说明
 └── README.md
 ```
 
@@ -51,30 +59,40 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 ## Installation / 安装
 
 ### English
-1. Use Python 3.10+.
+1. Use Node.js 20+.
 2. Install dependencies:
 
 ```bash
-pip install openai pyyaml ddgs langgraph playwright lark-oapi
-python -m playwright install chromium
+npm install
 ```
 
-3. Set API key:
+3. Optional: install Playwright Chromium browser if your environment has not installed it yet:
+
+```bash
+npx playwright install chromium
+```
+
+4. Set API key:
 
 ```bash
 export DASHSCOPE_API_KEY="your_api_key"
 ```
 
 ### 中文
-1. 使用 Python 3.10+。
+1. 使用 Node.js 20+。
 2. 安装依赖：
 
 ```bash
-pip install openai pyyaml ddgs langgraph playwright lark-oapi
-python -m playwright install chromium
+npm install
 ```
 
-3. 配置 API Key：
+3. 如当前环境还没有安装 Playwright Chromium，可执行：
+
+```bash
+npx playwright install chromium
+```
+
+4. 配置 API Key：
 
 ```bash
 export DASHSCOPE_API_KEY="你的key"
@@ -90,12 +108,19 @@ $env:DASHSCOPE_API_KEY="你的key"
 
 ## Run / 运行
 
-Set Feishu credentials:
+Set Feishu credentials and start the TypeScript runtime:
 
 ```bash
 export LARK_APP_ID="your_app_id"
 export LARK_APP_SECRET="your_app_secret"
-python main.py
+npm run dev
+```
+
+Build and run compiled JavaScript:
+
+```bash
+npm run build
+npm start
 ```
 
 Windows PowerShell:
@@ -103,64 +128,64 @@ Windows PowerShell:
 ```powershell
 $env:LARK_APP_ID="your_app_id"
 $env:LARK_APP_SECRET="your_app_secret"
-python main.py
+npm run dev
 ```
 
 - Default entry is Feishu single-channel ingress.
-- If you need local CLI mode temporarily: `MESSAGE_ENTRY=cli python main.py`.
+- If you need local CLI mode temporarily: `MESSAGE_ENTRY=cli npm run dev`.
 
 ---
 
 ## Debug & Testing / 调试与测试
 
 ### English
-- **Syntax check all core Python files**:
+- **Type check all TypeScript files**:
 
 ```bash
-python -m py_compile main.py agent_runtime.py agent_loop.py deepsearch.py context_memory.py tools.py feishu_entry.py channel_layer.py
+npm run typecheck
+```
+
+- **Build compiled runtime**:
+
+```bash
+npm run build
 ```
 
 - **Run in local CLI mode for smoke testing**:
 
 ```bash
-MESSAGE_ENTRY=cli python main.py
+MESSAGE_ENTRY=cli npm run dev
 ```
 
-- **Verify key runtime config files are readable**:
+- **Verify YAML configs are readable through the runtime**:
 
 ```bash
-python - <<'PY'
-import yaml
-for p in ["tool_config.yaml", "dynamic_config.yaml", "personalization.yaml"]:
-    with open(p, "r", encoding="utf-8") as f:
-        yaml.safe_load(f)
-print("yaml ok")
-PY
+printf '/reset\nquit\n' | DASHSCOPE_API_KEY=dummy MESSAGE_ENTRY=cli npm run dev
 ```
 
 ### 中文
-- **核心 Python 文件语法检查**：
+- **TypeScript 类型检查**：
 
 ```bash
-python -m py_compile main.py agent_runtime.py agent_loop.py deepsearch.py context_memory.py tools.py feishu_entry.py channel_layer.py
+npm run typecheck
+```
+
+- **构建运行时代码**：
+
+```bash
+npm run build
 ```
 
 - **本地 CLI 模式冒烟测试**：
 
 ```bash
-MESSAGE_ENTRY=cli python main.py
+MESSAGE_ENTRY=cli npm run dev
 ```
 
-- **关键运行配置可读性校验**：
+- **通过运行时验证 YAML 配置可读**：
 
 ```bash
-python - <<'PY'
-import yaml
-for p in ["tool_config.yaml", "dynamic_config.yaml", "personalization.yaml"]:
-    with open(p, "r", encoding="utf-8") as f:
-        yaml.safe_load(f)
-print("yaml ok")
-PY
+printf '/reset\nquit\n' | DASHSCOPE_API_KEY=dummy MESSAGE_ENTRY=cli npm run dev
 ```
 
 ---
@@ -169,12 +194,10 @@ PY
 
 ### English
 - The agent decides whether command execution is needed.
-- Before execution, the agent asks for explicit human permission.
 - Dangerous commands (for example `rm`, `shutdown`, `mkfs`) are blocked.
 
 ### 中文
 - 由 Agent 自主判断是否需要执行命令。
-- 执行前会先征求人类明确同意。
 - 危险命令（例如 `rm`、`shutdown`、`mkfs`）会被拦截。
 
 ## Tool: `schedule_cli_command` / 定时命令工具
@@ -193,8 +216,8 @@ PY
 
 ## Memory Files / 记忆文件
 
-- `MEMORY.md`: stable preferences, rules, identity, and project conventions / 长期稳定偏好、规则、身份信息、项目约定。
-- `memory/YYYY-MM-DD.md`: what was done today, temporary decisions, and active troubleshooting items / 今天做了什么、临时决定、正在排查的问题。
+- `memory_scopes/<scope>/MEMORY.md`: stable preferences, rules, identity, and project conventions / 长期稳定偏好、规则、身份信息、项目约定。
+- `memory_scopes/<scope>/memory/YYYY-MM-DD.md`: what was done today, temporary decisions, and active troubleshooting items / 今天做了什么、临时决定、正在排查的问题。
 
 ---
 

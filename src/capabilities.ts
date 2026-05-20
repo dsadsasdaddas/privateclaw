@@ -83,7 +83,7 @@ export class InMemoryAuditLogger implements AuditLogger {
 
   log(event: ToolAuditEvent): void {
     this.events.push(event);
-    if (process.env.PRIVATECLAW_AUDIT_STDOUT === "1") {
+    if (process.env.AIGC_CLI_AUDIT_STDOUT === "1" || process.env.PRIVATECLAW_AUDIT_STDOUT === "1") {
       console.log(`[AUDIT] ${JSON.stringify(event)}`);
     }
   }

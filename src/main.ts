@@ -4,8 +4,9 @@ import { MemoryContextManager } from "./context-memory.js";
 import { DeepSearch } from "./deepsearch.js";
 import { buildAvailableTools } from "./tools.js";
 import { CapabilityBroker, InMemoryAuditLogger } from "./capabilities.js";
-import { createAssistantProfile } from "./profiles.js";
+import { createOrchestratorProfile } from "./profiles.js";
 import { buildToolRegistry } from "./tool-registry.js";
+import { createSpawnAgentTool } from "./subagents.js";
 import { AgentLoop } from "./agent-loop.js";
 import { AgentRuntime } from "./agent-runtime.js";
 import { FeishuEntry } from "./feishu-entry.js";
@@ -34,9 +35,10 @@ export async function main(): Promise<void> {
   const toolRegistry = buildToolRegistry(toolConfig, availableTools);
   const audit = new InMemoryAuditLogger();
   const broker = new CapabilityBroker(toolRegistry, audit);
-  const rootProfile = createAssistantProfile(personalization);
+  const rootProfile = createOrchestratorProfile(personalization);
 
   const agentLoop = new AgentLoop(client, memoryManager, broker, rootProfile, personalization);
+  toolRegistry.spawn_agent = createSpawnAgentTool(agentLoop);
   const runtime = new AgentRuntime(agentLoop);
 
   const messageEntry = (process.env.MESSAGE_ENTRY ?? "feishu").trim().toLowerCase();

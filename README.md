@@ -1,32 +1,101 @@
-# AIGC-CLI
+# NetAgent-CLI
 
-A local AI assistant with persistent memory, deep search, controlled command execution, and Feishu message ingress.  
-一个支持长期记忆、深度搜索、受控命令执行与飞书消息入口的 AI 助手。
+NetAgent-CLI is a TypeScript runtime for building network-focused AI agents: web research, URL reading, deep search, controlled command execution, scoped memory, and Feishu/CLI ingress.  
+NetAgent-CLI 是一个面向网络任务的 TypeScript Agent 运行时，聚焦网页研究、URL 读取、深度搜索、受控命令执行、隔离记忆以及飞书/CLI 接入。
 
-> Runtime has been refactored to TypeScript under `src/`.  
-> 运行时已重构为 TypeScript，主实现位于 `src/`。
+> Formerly AIGC-CLI / PrivateClaw. The project is being reshaped around network-oriented agents and subagent permission isolation.  
+> 原项目名 AIGC-CLI / PrivateClaw；当前方向是网络相关 Agent 与 subagent 权限隔离。
+
+---
+
+## What It Is / 项目定位
+
+NetAgent-CLI is designed as a local-first network agent runtime:
+
+- **Orchestrator-first**: the root agent plans and delegates instead of doing every side effect directly.
+- **Network-oriented**: researcher subagents can search, read URLs, and run deep research flows.
+- **Permission-scoped**: every tool call goes through `CapabilityBroker` before execution.
+- **Composable subagents**: `researcher`, `coder`, and `tester` reuse the same AgentLoop with narrowed `ExecutionContext`.
+
+NetAgent-CLI 的目标是本地优先的网络 Agent 运行时：
+
+- **主控优先**：root agent 负责规划和委派，不直接执行所有副作用。
+- **网络导向**：researcher subagent 可搜索、读取 URL、执行 deep research。
+- **权限约束**：所有 tool call 执行前都经过 `CapabilityBroker` 裁决。
+- **可组合 subagent**：`researcher`、`coder`、`tester` 复用同一套 AgentLoop，并使用收窄后的 `ExecutionContext`。
 
 ---
 
 ## Features / 功能特性
 
 ### English
+- **Network Research** through `web_search`, `read_url`, and `deep_search`.
+- **Subagent Runtime** via `spawn_agent` with `researcher` / `coder` / `tester` profiles.
+- **Capability Broker** for tool allowlists, capability checks, resource scope checks, and audit logging.
 - **Persistent Memory** via scoped `MEMORY.md` and daily logs in `memory/YYYY-MM-DD.md`.
-- **Automatic Context Compression** when history becomes large.
-- **Deep Search Workflow** with multi-round query planning, page reading, reflection, and summarization.
 - **Controlled CLI Execution** through `exec_cli_command` with dangerous-command blocking.
-- **Scheduled Execution** through `schedule_cli_command` (run command after a delay).
 - **Feishu Single-Channel Ingress** via long connection in `src/main.ts`.
 - **TypeScript Runtime** with strict type checking and build output in `dist/`.
 
 ### 中文
+- 通过 `web_search`、`read_url`、`deep_search` 提供**网络研究能力**。
+- 通过 `spawn_agent` 提供 **subagent 运行时**，支持 `researcher` / `coder` / `tester` profile。
+- 通过 `CapabilityBroker` 统一做工具白名单、能力检查、资源范围检查与审计日志。
 - 通过按用户范围隔离的 `MEMORY.md` 与 `memory/YYYY-MM-DD.md` 实现**持久记忆**。
-- 当上下文过长时自动执行**历史压缩**。
-- 提供**深度搜索流程**：多轮检索、页面读取、反思与总结。
 - 提供**受控命令执行**：`exec_cli_command` 会拦截危险命令。
-- 提供**定时执行能力**：`schedule_cli_command` 可在延迟后执行命令。
 - 提供**飞书单通道接入**（长连接消息入口）。
 - 使用 **TypeScript 严格类型检查**，构建产物输出到 `dist/`。
+
+---
+
+## Runtime Design / 运行时设计
+
+```mermaid
+flowchart TD
+  A["User / Feishu / CLI"] --> B["AgentRuntime"]
+  B --> C["AgentLoop: Orchestrator"]
+  C --> D["CapabilityBroker"]
+  D --> E["ToolRegistry"]
+  C --> F["spawn_agent"]
+  F --> G["Child AgentLoop"]
+  G --> D
+  G --> H["researcher: web_search/read_url/deep_search"]
+  G --> I["coder: read_file/write_file/list_files"]
+  G --> J["tester: exec_cli_command"]
+  C --> K["MemoryContextManager"]
+```
+
+Core data flow:
+
+```text
+RuntimeMessage
+ -> Root Orchestrator ExecutionContext
+ -> CapabilityBroker filters visible tools
+ -> LLM tool_call: spawn_agent
+ -> deriveChildContext(parent delegate ∩ child direct ∩ requested scope)
+ -> Child AgentLoop
+ -> CapabilityBroker filters/executes child tools
+ -> Child result
+ -> Orchestrator summary
+ -> Memory
+ -> RuntimeResult
+```
+
+核心数据流：
+
+```text
+RuntimeMessage
+ -> Root Orchestrator ExecutionContext
+ -> CapabilityBroker 过滤可见工具
+ -> LLM tool_call: spawn_agent
+ -> deriveChildContext(parent delegate ∩ child direct ∩ requested scope)
+ -> Child AgentLoop
+ -> CapabilityBroker 过滤/执行子 Agent 工具
+ -> Child result
+ -> Orchestrator 汇总
+ -> Memory
+ -> RuntimeResult
+```
 
 ---
 
@@ -39,12 +108,16 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 ├── src/
 │   ├── main.ts               # Main entry (Feishu by default) / 主入口（默认飞书）
 │   ├── agent-runtime.ts      # Runtime orchestration / 运行时编排
-│   ├── channel-layer.ts      # Channel payload normalization / 渠道消息清洗层
-│   ├── feishu-entry.ts       # Feishu long-connection ingress / 飞书长连接入口
-│   ├── agent-loop.ts         # Unified AgentLoop planning/execution loop / 统一思考执行循环
+│   ├── agent-loop.ts         # Plan / Execute / Observe loop / 统一思考执行循环
+│   ├── capabilities.ts       # Permission broker and execution context / 权限网关与执行上下文
+│   ├── profiles.ts           # Agent profiles / Agent 权限画像
+│   ├── subagents.ts          # spawn_agent implementation / 子 Agent 委派实现
+│   ├── tool-registry.ts      # Tool specs and capability mapping / 工具注册与权限映射
+│   ├── tools.ts              # Tool implementations / 工具实现
 │   ├── deepsearch.ts         # Deep search workflow / 深度搜索流程
 │   ├── context-memory.ts     # Memory manager / 记忆管理器
-│   ├── tools.ts              # Tool implementations / 工具实现
+│   ├── channel-layer.ts      # Channel payload normalization / 渠道消息清洗层
+│   ├── feishu-entry.ts       # Feishu long-connection ingress / 飞书长连接入口
 │   ├── config.ts             # YAML config loading / 配置读取
 │   └── skills/               # Skill scripts / 技能脚本
 ├── tool_config.yaml          # Tool schemas / 工具声明
@@ -58,62 +131,46 @@ A local AI assistant with persistent memory, deep search, controlled command exe
 
 ## Installation / 安装
 
-### English
-1. Use Node.js 20+.
-2. Install dependencies:
+Use Node.js 20+:
 
 ```bash
 npm install
 ```
 
-3. Optional: install Playwright Chromium browser if your environment has not installed it yet:
+Optional Playwright browser install for deep page reading:
 
 ```bash
 npx playwright install chromium
 ```
 
-4. Set API key:
+Set API key:
 
 ```bash
 export DASHSCOPE_API_KEY="your_api_key"
 ```
 
-### 中文
-1. 使用 Node.js 20+。
-2. 安装依赖：
-
-```bash
-npm install
-```
-
-3. 如当前环境还没有安装 Playwright Chromium，可执行：
-
-```bash
-npx playwright install chromium
-```
-
-4. 配置 API Key：
-
-```bash
-export DASHSCOPE_API_KEY="你的key"
-```
-
 Windows PowerShell:
 
 ```powershell
-$env:DASHSCOPE_API_KEY="你的key"
+$env:DASHSCOPE_API_KEY="your_api_key"
 ```
 
 ---
 
 ## Run / 运行
 
-Set Feishu credentials and start the TypeScript runtime:
+Feishu mode is the default:
 
 ```bash
 export LARK_APP_ID="your_app_id"
 export LARK_APP_SECRET="your_app_secret"
 npm run dev
+```
+
+Local CLI mode:
+
+```bash
+MESSAGE_ENTRY=cli npm run dev
 ```
 
 Build and run compiled JavaScript:
@@ -123,101 +180,47 @@ npm run build
 npm start
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:LARK_APP_ID="your_app_id"
-$env:LARK_APP_SECRET="your_app_secret"
-npm run dev
-```
-
-- Default entry is Feishu single-channel ingress.
-- If you need local CLI mode temporarily: `MESSAGE_ENTRY=cli npm run dev`.
-
 ---
 
 ## Debug & Testing / 调试与测试
 
-### English
-- **Type check all TypeScript files**:
-
 ```bash
 npm run typecheck
-```
-
-- **Build compiled runtime**:
-
-```bash
 npm run build
-```
-
-- **Run in local CLI mode for smoke testing**:
-
-```bash
-MESSAGE_ENTRY=cli npm run dev
-```
-
-- **Verify YAML configs are readable through the runtime**:
-
-```bash
-printf '/reset\nquit\n' | DASHSCOPE_API_KEY=dummy MESSAGE_ENTRY=cli npm run dev
-```
-
-### 中文
-- **TypeScript 类型检查**：
-
-```bash
-npm run typecheck
-```
-
-- **构建运行时代码**：
-
-```bash
-npm run build
-```
-
-- **本地 CLI 模式冒烟测试**：
-
-```bash
-MESSAGE_ENTRY=cli npm run dev
-```
-
-- **通过运行时验证 YAML 配置可读**：
-
-```bash
 printf '/reset\nquit\n' | DASHSCOPE_API_KEY=dummy MESSAGE_ENTRY=cli npm run dev
 ```
 
 ---
 
-## Tool: `exec_cli_command` / 命令执行工具
+## Permission Model / 权限模型
 
-### English
-- The agent decides whether command execution is needed.
-- Dangerous commands (for example `rm`, `shutdown`, `mkfs`) are blocked.
+Subagent permissions are never expanded at runtime. They are derived as:
 
-### 中文
-- 由 Agent 自主判断是否需要执行命令。
-- 危险命令（例如 `rm`、`shutdown`、`mkfs`）会被拦截。
+```text
+child effective grants = parent delegate grants ∩ child profile direct grants ∩ requested task scope
+```
 
-## Tool: `schedule_cli_command` / 定时命令工具
+子 Agent 权限不会在运行时扩大，派生规则是：
 
-### English
-- Use this when users ask to execute a command after a delay.
-- Example intent: “Run `echo hello` after 30 seconds”.
-- Dangerous commands are rejected automatically.
+```text
+child effective grants = 父级可委派权限 ∩ 子 profile 直接权限 ∩ 请求任务 scope
+```
 
-### 中文
-- 当用户提出“过一段时间再执行命令”时使用。
-- 示例意图：“30 秒后执行 `echo hello`”。
-- 危险命令会被自动拒绝。
+Current profiles:
+
+| Profile | Purpose | Visible tools |
+|---|---|---|
+| `orchestrator` | Plan, delegate, summarize | `spawn_agent`, `get_system_time` |
+| `researcher` | Network research | `web_search`, `read_url`, `deep_search` |
+| `coder` | Scoped file edits | `read_file`, `write_file`, `list_files` |
+| `tester` | Whitelisted checks | `exec_cli_command` |
 
 ---
 
 ## Memory Files / 记忆文件
 
 - `memory_scopes/<scope>/MEMORY.md`: stable preferences, rules, identity, and project conventions / 长期稳定偏好、规则、身份信息、项目约定。
-- `memory_scopes/<scope>/memory/YYYY-MM-DD.md`: what was done today, temporary decisions, and active troubleshooting items / 今天做了什么、临时决定、正在排查的问题。
+- `memory_scopes/<scope>/memory/YYYY-MM-DD.md`: daily dialogue and working memory / 每日对话与工作记忆。
 
 ---
 
@@ -225,9 +228,7 @@ printf '/reset\nquit\n' | DASHSCOPE_API_KEY=dummy MESSAGE_ENTRY=cli npm run dev
 
 - Keep API keys in environment variables; never hardcode secrets.  
   请将密钥保存在环境变量中，不要硬编码到仓库。
-- This project is currently optimized for Feishu single-channel ingress.  
-  当前项目主要面向飞书单通道消息接入场景。
-- Personalized options are configured in `personalization.yaml` (API key env name, base URL, model choices).  
-  个性化选项通过 `personalization.yaml` 配置（API Key 环境变量名、Base URL、模型选择）。
-- See `TROUBLESHOOTING.md` for common non-retriable error signatures and stop conditions.  
-  常见不可重试错误签名与自动停止条件见 `TROUBLESHOOTING.md`。
+- Personalized options are configured in `personalization.yaml`.  
+  个性化选项通过 `personalization.yaml` 配置。
+- Enable audit stdout with `AIGC_CLI_AUDIT_STDOUT=1`.  
+  可通过 `AIGC_CLI_AUDIT_STDOUT=1` 打开审计日志输出。

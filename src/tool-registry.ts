@@ -10,6 +10,7 @@ const TOOL_CAPABILITIES: Record<string, Capability[]> = {
   create_new_skills: ["fs:write"],
   exec_cli_command: ["shell:exec"],
   schedule_cli_command: ["shell:exec"],
+  spawn_agent: ["agent:spawn"],
   read_url: ["network:web"],
   read_file: ["fs:read"],
   write_file: ["fs:write"],
